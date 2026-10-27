@@ -1,0 +1,15 @@
+# Build artifacts
+cpp/looping
+build/
+*.o
+*.a
+*.dylib
+*.out
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# Smiledev runtime cache
+.smiledev/

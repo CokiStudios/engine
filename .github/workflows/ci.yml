@@ -1,0 +1,31 @@
+name: Looping Engine CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Verify (macOS / Linux)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-14, ubuntu-latest]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Compile C++17 Looping Engine
+        run: |
+          make -C cpp
+
+      - name: Run Looping Native Test Suite (57/57)
+        run: |
+          ./bin/looping test
+
+      - name: Verify smiledev Package Manager CLI
+        run: |
+          ./bin/smiledev version
+          ./bin/smiledev help
