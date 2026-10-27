@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient (Dark Obsidian matching Coki Studios brand identity) -->
+    <radialGradient id="bgLauncher" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#0e172a" />
+      <stop offset="60%" stop-color="#060913" />
+      <stop offset="100%" stop-color="#020306" />
+    </radialGradient>
+
+    <!-- Shine Loop Signature Gradient (Electric Cyan to Neon Purple) -->
+    <linearGradient id="neonLoop" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="45%" stop-color="#38bdf8" />
+      <stop offset="80%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <!-- Glow Filter matching Coki Studios Icon family -->
+    <filter id="glowLauncher" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Dark Obsidian Squircle -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#bgLauncher)" stroke="#1e293b" stroke-width="4" />
+
+  <!-- Subtle Horizon Grid Ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="#38bdf8" stroke-opacity="0.06" stroke-width="2" stroke-dasharray="8 8" />
+
+  <!-- Shine Loop Minimalist Emblem -->
+  <g filter="url(#glowLauncher)">
+    <!-- Top Beacon Dot (Coki Studios signature) -->
+    <circle cx="256" cy="115" r="13" fill="#38bdf8" />
+
+    <!-- Pure Infinity Loop (Smooth single continuous stroke) -->
+    <path d="M 256 256
+             C 215 195, 140 185, 108 217
+             C 70 255, 70 305, 108 343
+             C 145 380, 215 315, 256 256
+             C 297 197, 367 132, 404 169
+             C 442 207, 442 257, 404 295
+             C 372 327, 297 317, 256 256 Z"
+          fill="none"
+          stroke="url(#neonLoop)"
+          stroke-width="24"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Core Center Spark Dot -->
+    <circle cx="256" cy="256" r="10" fill="#ffffff" />
+  </g>
+</svg>

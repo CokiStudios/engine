@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/badge/release-v1.0.0--commercial-38bdf8.svg?style=flat-square)](https://github.com/CokiStudios/engine/releases/tag/v1.0.0-commercial)
 [![Architecture](https://img.shields.io/badge/arch-2.8A%20Quantum-10b981.svg?style=flat-square)](https://cokistudios.github.io/developer.html)
-[![Tests](https://img.shields.io/badge/tests-57%2F57%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
+[![Tests](https://img.shields.io/badge/tests-58%2F58%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 [![License](https://img.shields.io/badge/license-MIT-f59e0b.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20Universal%20%7C%20Linux%20%7C%20POSIX-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 
@@ -116,12 +116,20 @@ smiledev link
 ## 📂 Estructura del Repositorio
 
 * [`cpp/`](cpp/): Código fuente nativo en C++17 (Lexer, Parser, AST, Compilador, Intérprete, REPL, TUI SwiftUI y Native Window).
-* [`web/`](web/): Motor de ejecución y renderizado 2D para la web y navegadores (`looping_core.js`).
 * [`bin/`](bin/): Binarios precompilados universales (`looping`, `smiledev`).
-* [`modules/`](modules/): Módulos estándar comunitarios (`loop-core-utils`, `loop-node-window`, `loop-gui-qt`, `loop-gui-tk`).
-* [`samples/`](samples/): Ejemplos completos de videojuegos, dashboards SwiftUI, pipelines y algoritmos.
+* [`modules/`](modules/): Módulos estándar comunitarios e híbridos (`loop-core-utils`, `csid-login-button`, `loop-game-plus`, `loop-node-window`, `loop-gui-qt`, `loop-gui-tk`, etc.).
+* [`samples/`](samples/): Ejemplos completos de videojuegos 2D, dashboards SwiftUI, pipelines y algoritmos.
+* [`c2/`](c2/): Especificación de interfaz declarativa C2 y perfiles de tema (`aqua_nomad_ui.c2`, `cyber_neon_xui.c2`, etc.).
+* [`extensions/`](extensions/): Extensión oficial de Visual Studio Code (`vscode-looping-cs-core`) con resaltado de sintaxis y autocompletado.
+* [`web/`](web/): Portal de descargas, motor Web Core Canvas y el GUI oficial [`smiledev.html`](web/smiledev.html).
+* [`legacy/`](legacy/): Archivo histórico del prototipo original en Node.js previo a la transición a C++17.
+* [`debian/`](debian/): Metadatos de empaquetado para distribuciones Linux basadas en Debian / Ubuntu.
+* [`docs/`](docs/): Especificación formal del lenguaje, de `smiledev` y del subsistema de módulos.
 * [`Formula/`](Formula/): Fórmulas oficiales de Homebrew (`looping.rb`, `smiledev.rb`).
-* [`SPECIFICATION.md`](SPECIFICATION.md): Especificación exhaustiva de sintaxis, palabras clave y stdlib.
+* [`dist/`](dist/): Paquetes universales de lanzamiento y firmas criptográficas SHA-256.
+* [`scripts/`](scripts/): Herramientas de empaquetado y automatización de releases.
+* [`assets/`](assets/): Iconos e identidad visual oficial de Looping y Shine Launcher.
+* [`install.sh`](install.sh): Script de instalación automatizada para entornos POSIX.
 
 ---
 
