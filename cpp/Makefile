@@ -11,7 +11,7 @@ endif
 SRC = main.cpp
 HEADERS = LoopingValue.hpp LoopingAST.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
 
-TARGET = ../bin/looping
+TARGET = ../../bin/looping
 LOCAL_TARGET = looping
 
 PREFIX ?= /usr/local
@@ -24,7 +24,7 @@ $(LOCAL_TARGET): $(SRC) $(HEADERS)
 	@echo "Built: $(LOCAL_TARGET)"
 
 $(TARGET): $(LOCAL_TARGET)
-	@-mkdir -p ../bin 2>/dev/null && cp $(LOCAL_TARGET) $(TARGET) 2>/dev/null || true
+	@-mkdir -p ../../bin 2>/dev/null && cp $(LOCAL_TARGET) $(TARGET) 2>/dev/null || true
 	@echo "Copied to: $(TARGET)"
 
 install: $(LOCAL_TARGET)
