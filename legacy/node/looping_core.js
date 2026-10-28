@@ -35,9 +35,13 @@ export class LoopingInterpreter {
         this.gameWon = false;
         this.sourceCode = '';
         
-        // World & Physics Configuration
+        // World, Scenario & Physics Configuration
         this.gravity = 980;
         this.friction = 0.82;
+        this.timeScale = 1.0;
+        this.combo = 0;
+        this.comboTimer = 0;
+        this.scenario = { name: 'Holo Cyber Stage', weather: 'stars', bg: '#06090f', accent: '#38bdf8' };
         this.world = { width: 1200, height: 480, hasCustomBounds: false };
         this.camera = { x: 0, y: 0, targetX: 0, targetY: 0, smooth: 0.12, shake: 0 };
         this.coyoteTime = 0.12;
@@ -291,29 +295,34 @@ export class LoopingInterpreter {
 
     shootProjectile(player) {
         const now = performance.now();
-        if (player.lastShotTime && now - player.lastShotTime < 200) return;
+        const cooldown = player.overdrive ? 130 : 200;
+        if (player.lastShotTime && now - player.lastShotTime < cooldown) return;
         player.lastShotTime = now;
 
         const dir = player.facing || 1;
-        const px = dir > 0 ? player.x + player.w + 2 : player.x - 14;
-        const py = player.y + player.h * 0.42;
+        const isOver = Boolean(player.overdrive);
+        const pw = isOver ? 24 : 14;
+        const ph = isOver ? 9 : 5;
+        const px = dir > 0 ? player.x + player.w + 2 : player.x - pw;
+        const py = player.y + player.h * (isOver ? 0.36 : 0.42);
+        const pColor = isOver ? '#ef4444' : (player.color || '#38bdf8');
 
         this.projectiles.push({
             type: 'projectile',
             x: px,
             y: py,
-            vx: dir * 580,
+            vx: dir * (isOver ? 700 : 580),
             vy: 0,
-            w: 14,
-            h: 5,
-            color: player.color || '#38bdf8',
+            w: pw,
+            h: ph,
+            color: pColor,
             isPlayer: true,
-            damage: 25,
-            life: 1.4
+            damage: isOver ? 65 : 25,
+            life: 1.5
         });
 
         this.playSfx('shoot');
-        this.spawnParticleBurst(px, py, '#38bdf8', 6);
+        this.spawnParticleBurst(px, py, pColor, isOver ? 12 : 6);
     }
 
     // ── Web Audio Synthesizer (Zero External Dependencies) ──
@@ -536,6 +545,10 @@ export class LoopingInterpreter {
         this.particles = [];
         this.projectiles = [];
         this.popups = [];
+        this.timeScale = 1.0;
+        this.combo = 0;
+        this.comboTimer = 0;
+        this.scenario = { name: 'Holo Cyber Stage', weather: 'stars', bg: '#06090f', accent: '#38bdf8' };
         this.camera = { x: 0, y: 0, targetX: 0, targetY: 0, smooth: 0.12, shake: 0 };
         this.world = { width: this.canvas ? this.canvas.width : 1200, height: this.canvas ? this.canvas.height : 480, hasCustomBounds: false };
         this.gameOver = false;
@@ -788,6 +801,37 @@ export class LoopingInterpreter {
             return;
         }
 
+        if (line.startsWith('game.scenario(') || line.startsWith('game.background(')) {
+            const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+            const args = this.parseNamedArgs(inner);
+            if (args.name) this.scenario.name = args.name;
+            if (args.weather || args.theme) this.scenario.weather = args.weather || args.theme;
+            if (args.bg) this.scenario.bg = args.bg;
+            if (args.accent) this.scenario.accent = args.accent;
+            this.log(`🌌 [SCENARIO] Escenario activo: "${this.scenario.name}" [Clima: ${this.scenario.weather}]`, 'info');
+            return;
+        }
+
+        if (line.startsWith('game.physics(')) {
+            const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+            const args = this.parseNamedArgs(inner);
+            if (args.gravity !== undefined) this.gravity = Number(args.gravity);
+            if (args.friction !== undefined) this.friction = Number(args.friction);
+            if (args.time_scale !== undefined) this.timeScale = Number(args.time_scale);
+            if (args.coyote_time !== undefined) this.coyoteTime = Number(args.coyote_time);
+            this.log(`⚙️ [PHYSICS] Gravity: ${this.gravity} | Friction: ${this.friction} | TimeScale: ${this.timeScale}x`, 'system');
+            return;
+        }
+
+        if (line.startsWith('game.time_scale(')) {
+            const m = line.match(/game\.time_scale\(([\d.]+)\)/);
+            if (m) {
+                this.timeScale = parseFloat(m[1]);
+                this.log(`⏱️ [TIME SCALE] Factor temporal: ${this.timeScale}x`, 'system');
+            }
+            return;
+        }
+
         // 6. Window Canvas: create window with title "Title" and size (width, height)
         if (line.startsWith('create window')) {
             const titleMatch = line.match(/title ["'](.*?)["']/);
@@ -1011,7 +1055,7 @@ export class LoopingInterpreter {
             }
 
             const isPlayer = line.includes('player') || name.toLowerCase().includes('angel') || 
-                             name.toLowerCase().includes('player') || name.toLowerCase().includes('forky');
+                             name.toLowerCase().includes('player') || name.toLowerCase().includes('hero');
 
             const sprite = {
                 type: 'sprite',
@@ -1019,6 +1063,8 @@ export class LoopingInterpreter {
                 isPlayer: isPlayer,
                 x: x,
                 y: y,
+                spawnX: x,
+                spawnY: y,
                 w: w,
                 h: h,
                 vx: 0,
@@ -1038,6 +1084,8 @@ export class LoopingInterpreter {
                 dashTimer: 0,
                 dashCooldown: 0,
                 invulnerableTimer: 0,
+                teleportCooldown: 0,
+                overdrive: false,
                 squash: 1.0,
                 stretch: 1.0,
                 glowPulse: 0,
@@ -1051,7 +1099,7 @@ export class LoopingInterpreter {
 
         // 17. Enemy NPC: spawn enemy / spawn.enemy
         if (line.startsWith('spawn enemy') || line.startsWith('spawn.enemy')) {
-            let name = 'CorruptedForkbot';
+            let name = 'CorruptedDrone';
             let x = 460, y = 300, w = 34, h = 44;
             let color = '#ef4444';
             let minX = 350, maxX = 620;
@@ -1393,6 +1441,157 @@ export class LoopingInterpreter {
             return;
         }
 
+        // 25b. Boss Entity: spawn boss / spawn.boss
+        if (line.startsWith('spawn boss') || line.startsWith('spawn.boss')) {
+            let name = 'TITÁN BLUELINE';
+            let x = 1280, y = 316, w = 58, h = 76;
+            let minX = 1100, maxX = 1450;
+            let speed = 95, health = 450, fireRate = 1.7;
+            let color = '#ef4444';
+
+            if (line.includes('(') && line.startsWith('spawn.boss(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.name) name = args.name;
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.size && Array.isArray(args.size)) { w = args.size[0]; h = args.size[1]; }
+                if (args.range && Array.isArray(args.range)) { minX = args.range[0]; maxX = args.range[1]; }
+                if (args.speed) speed = args.speed;
+                if (args.health) health = args.health;
+                if (args.fire_rate) fireRate = args.fire_rate;
+                if (args.color) color = args.color;
+            }
+
+            const boss = {
+                type: 'boss',
+                name: name,
+                x: x, y: y, w: w, h: h,
+                vx: speed, vy: 0,
+                speed: speed, dir: -1,
+                minX: minX, maxX: maxX,
+                health: health, maxHealth: health,
+                fireRate: fireRate, fireTimer: fireRate,
+                enraged: false,
+                color: color,
+                isAlive: true,
+                glowPulse: 0
+            };
+            this.gameEntities.push(boss);
+            this.log(`👹 Jefe Final desplegado: "${boss.name}" (HP: ${health} | Rango: ${minX}-${maxX})`, 'info');
+            return;
+        }
+
+        // 25c. Checkpoint Beacon: spawn checkpoint / spawn.checkpoint
+        if (line.startsWith('spawn checkpoint') || line.startsWith('spawn.checkpoint')) {
+            let x = 500, y = 336, label = 'CHECKPOINT', color = '#38bdf8';
+            if (line.includes('(') && line.startsWith('spawn.checkpoint(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.label) label = args.label;
+                if (args.color) color = args.color;
+            }
+            this.gameEntities.push({
+                type: 'checkpoint',
+                x: x, y: y, w: 28, h: 60,
+                label: label, color: color,
+                activated: false, pulse: 0
+            });
+            this.log(`🚩 Checkpoint registrado en (${x}, ${y}) ["${label}"]`, 'info');
+            return;
+        }
+
+        // 25d. Gravity / Anomaly Zone: spawn.gravity_zone / spawn.zone / spawn gravity_zone
+        if (line.startsWith('spawn.gravity_zone') || line.startsWith('spawn.zone') || line.startsWith('spawn gravity_zone')) {
+            let x = 400, y = 80, w = 280, h = 320, scale = 0.35, windX = 0, windY = 0;
+            let label = 'LOW-G ZONE', color = '#c084fc';
+            if (line.includes('(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.size && Array.isArray(args.size)) { w = args.size[0]; h = args.size[1]; }
+                if (args.scale !== undefined) scale = args.scale;
+                if (args.wind_x !== undefined) windX = args.wind_x;
+                if (args.wind_y !== undefined) windY = args.wind_y;
+                if (args.label) label = args.label;
+                if (args.color) color = args.color;
+            }
+            this.gameEntities.push({
+                type: 'gravity_zone',
+                x: x, y: y, w: w, h: h,
+                scale: scale, windX: windX, windY: windY,
+                label: label, color: color
+            });
+            this.log(`🌀 Zona Física en (${x}, ${y}) [${w}x${h} | Gravedad: ${scale}G | "${label}"]`, 'info');
+            return;
+        }
+
+        // 25e. Teleporter: spawn.teleporter / spawn teleporter
+        if (line.startsWith('spawn.teleporter') || line.startsWith('spawn teleporter')) {
+            let x = 400, y = 300, toX = 800, toY = 200, label = 'WARP', color = '#00f5d4';
+            if (line.includes('(') && line.startsWith('spawn.teleporter(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.to && Array.isArray(args.to)) { toX = args.to[0]; toY = args.to[1]; }
+                if (args.label) label = args.label;
+                if (args.color) color = args.color;
+            }
+            this.gameEntities.push({
+                type: 'teleporter',
+                x: x, y: y, w: 38, h: 58,
+                toX: toX, toY: toY,
+                label: label, color: color, angle: 0
+            });
+            this.log(`⚡ Teletransportador en (${x}, ${y}) -> (${toX}, ${toY}) ["${label}"]`, 'info');
+            return;
+        }
+
+        // 25f. Breakable Barrier / Debris: spawn.breakable / spawn breakable
+        if (line.startsWith('spawn.breakable') || line.startsWith('spawn breakable')) {
+            let x = 300, y = 260, w = 36, h = 76, health = 40, points = 120, color = '#f59e0b';
+            if (line.includes('(') && line.startsWith('spawn.breakable(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.size && Array.isArray(args.size)) { w = args.size[0]; h = args.size[1]; }
+                if (args.health) health = args.health;
+                if (args.points) points = args.points;
+                if (args.color) color = args.color;
+            }
+            this.gameEntities.push({
+                type: 'breakable',
+                x: x, y: y, w: w, h: h,
+                health: health, maxHealth: health,
+                points: points, color: color,
+                broken: false
+            });
+            this.log(`🧱 Barrera destructible en (${x}, ${y}) [HP: ${health}]`, 'info');
+            return;
+        }
+
+        // 25g. Laser Gate Hazard: spawn.laser_hazard / spawn laser_hazard
+        if (line.startsWith('spawn.laser_hazard') || line.startsWith('spawn laser_hazard')) {
+            let x = 350, y = 240, w = 12, h = 110, interval = 2.0, damage = 30, color = '#f43f5e';
+            if (line.includes('(') && line.startsWith('spawn.laser_hazard(')) {
+                const inner = line.slice(line.indexOf('(') + 1, line.lastIndexOf(')'));
+                const args = this.parseNamedArgs(inner);
+                if (args.at && Array.isArray(args.at)) { x = args.at[0]; y = args.at[1]; }
+                if (args.size && Array.isArray(args.size)) { w = args.size[0]; h = args.size[1]; }
+                if (args.interval) interval = args.interval;
+                if (args.damage) damage = args.damage;
+                if (args.color) color = args.color;
+            }
+            this.gameEntities.push({
+                type: 'laser_hazard',
+                x: x, y: y, w: w, h: h,
+                interval: interval, timer: 0,
+                active: true, damage: damage, color: color
+            });
+            this.log(`🚨 Láser rítmico en (${x}, ${y}) [Ciclo: ${interval}s]`, 'info');
+            return;
+        }
+
         // 26. Particle System / Spark emitter: emit particles
         if (line.startsWith('emit particles') || line.startsWith('fx.particles(')) {
             let px = 200, py = 200, pColor = '#38bdf8';
@@ -1606,9 +1805,14 @@ export class LoopingInterpreter {
             }
         }
 
+        dt = dt * (this.timeScale || 1.0);
+        if (this.comboTimer > 0) {
+            this.comboTimer -= dt;
+            if (this.comboTimer <= 0) this.combo = 0;
+        }
         const floorY = this.canvas ? this.canvas.height - 44 : 436;
 
-        // 1. Update Moving Platforms First (So players can ride smoothly)
+        // 1. Update Moving Platforms, Portals, Teleporters & Laser Gates
         for (let other of this.gameEntities) {
             if (other.type === 'moving_platform') {
                 if (other.axis === 'x') {
@@ -1624,14 +1828,20 @@ export class LoopingInterpreter {
                     if (other.y >= other.maxPos) { other.y = other.maxPos; other.dir = -1; }
                     if (other.y <= other.minPos) { other.y = other.minPos; other.dir = 1; }
                 }
-            } else if (other.type === 'portal') {
-                other.angle += dt * 2.5;
-            } else if (other.type === 'jump_pad' || other.type === 'orb') {
+            } else if (other.type === 'portal' || other.type === 'teleporter') {
+                other.angle = (other.angle || 0) + dt * 2.5;
+            } else if (other.type === 'jump_pad' || other.type === 'orb' || other.type === 'checkpoint') {
                 if (other.pulse > 0) other.pulse = Math.max(0, other.pulse - dt * 3.5);
+            } else if (other.type === 'laser_hazard') {
+                other.timer = (other.timer || 0) + dt;
+                if (other.timer >= (other.interval || 2.0)) {
+                    other.timer = 0;
+                    other.active = !other.active;
+                }
             }
         }
 
-        // 2. Update Entities (Player, Enemies, Projectiles)
+        // 2. Update Entities (Player, Enemies, Bosses)
         for (let entity of this.gameEntities) {
             entity.glowPulse = (entity.glowPulse || 0) + dt * 5;
 
@@ -1641,6 +1851,7 @@ export class LoopingInterpreter {
                 if (entity.jumpBufferTimer > 0) entity.jumpBufferTimer -= dt;
                 if (entity.invulnerableTimer > 0) entity.invulnerableTimer -= dt;
                 if (entity.dashCooldown > 0) entity.dashCooldown -= dt;
+                if (entity.teleportCooldown > 0) entity.teleportCooldown -= dt;
                 
                 // Dash handling
                 if (entity.isDashing) {
@@ -1699,8 +1910,21 @@ export class LoopingInterpreter {
                         }
                     }
 
-                    // Apply Gravity
-                    entity.vy += this.gravity * dt;
+                    // Check Gravity Zones & Wind Anomalies
+                    let gravScale = 1.0;
+                    let windX = 0, windY = 0;
+                    for (let gz of this.gameEntities) {
+                        if (gz.type === 'gravity_zone') {
+                            if (entity.x + entity.w > gz.x && entity.x < gz.x + gz.w &&
+                                entity.y + entity.h > gz.y && entity.y < gz.y + gz.h) {
+                                gravScale = gz.scale !== undefined ? gz.scale : 0.35;
+                                windX = gz.windX || 0;
+                                windY = gz.windY || 0;
+                            }
+                        }
+                    }
+                    entity.vx += windX * dt;
+                    entity.vy += (this.gravity * gravScale + windY) * dt;
                 }
 
                 // Apply Velocities
@@ -1834,6 +2058,78 @@ export class LoopingInterpreter {
                             this.spawnParticleBurst(other.x, other.y, '#10b981', 20);
                         }
                     }
+                    // Checkpoint Beacon
+                    else if (other.type === 'checkpoint') {
+                        if (entity.x + entity.w > other.x && entity.x < other.x + other.w &&
+                            entity.y + entity.h > other.y && entity.y < other.y + other.h) {
+                            if (!other.activated) {
+                                other.activated = true;
+                                other.pulse = 1.0;
+                                entity.spawnX = other.x;
+                                entity.spawnY = other.y - 10;
+                                entity.health = Math.min(entity.maxHealth, entity.health + 25);
+                                this.playSfx('heal');
+                                this.addPopup(other.x, other.y - 14, `🚩 ${other.label}`, '#4ade80');
+                                this.spawnParticleBurst(other.x + 14, other.y + 20, '#4ade80', 22);
+                                this.log(`🚩 Checkpoint activado: "${other.label}" en (${other.x}, ${other.y})`, 'success');
+                            }
+                        }
+                    }
+                    // Teleporter Quantum Warp
+                    else if (other.type === 'teleporter') {
+                        if (entity.teleportCooldown <= 0 &&
+                            entity.x + entity.w > other.x && entity.x < other.x + other.w &&
+                            entity.y + entity.h > other.y && entity.y < other.y + other.h) {
+                            this.spawnParticleBurst(entity.x + entity.w / 2, entity.y + entity.h / 2, other.color || '#00f5d4', 24);
+                            entity.x = other.toX;
+                            entity.y = other.toY;
+                            entity.vy = -120;
+                            entity.teleportCooldown = 1.1;
+                            this.playSfx('pad');
+                            this.addPopup(entity.x, entity.y - 14, `⚡ ${other.label}`, other.color || '#00f5d4');
+                            this.spawnParticleBurst(entity.x + entity.w / 2, entity.y + entity.h / 2, other.color || '#00f5d4', 28);
+                        }
+                    }
+                    // Breakable Barrier / Debris
+                    else if (other.type === 'breakable' && !other.broken) {
+                        if (entity.x + entity.w > other.x && entity.x < other.x + other.w &&
+                            entity.y + entity.h > other.y && entity.y < other.y + other.h) {
+                            if (entity.isDashing || entity.overdrive) {
+                                other.broken = true;
+                                this.score += (other.points || 120);
+                                this.camera.shake = 8;
+                                this.playSfx('stomp');
+                                this.addPopup(other.x, other.y - 10, `+${other.points || 120} SHATTER!`, '#fbbf24');
+                                this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, other.color || '#f59e0b', 28);
+                            } else if (entity.vy >= 0 && (entity.y + entity.h) <= other.y + 16) {
+                                entity.y = other.y - entity.h;
+                                entity.vy = 0;
+                                entity.isJumping = false;
+                                entity.coyoteTimer = this.coyoteTime;
+                                entity.doubleJumpAvailable = entity.canDoubleJump;
+                            } else {
+                                if (entity.x + entity.w / 2 < other.x + other.w / 2) entity.x = other.x - entity.w;
+                                else entity.x = other.x + other.w;
+                                entity.vx = 0;
+                            }
+                        }
+                    }
+                    // Laser Hazard Gate
+                    else if (other.type === 'laser_hazard' && other.active) {
+                        if (entity.x + entity.w > other.x && entity.x < other.x + other.w &&
+                            entity.y + entity.h > other.y && entity.y < other.y + other.h) {
+                            if (entity.invulnerableTimer <= 0 && !entity.isDashing) {
+                                entity.health -= (other.damage || 30);
+                                entity.invulnerableTimer = 1.0;
+                                this.camera.shake = 10;
+                                this.playSfx('hurt');
+                                this.addPopup(entity.x, entity.y - 12, `-${other.damage || 30} LASER`, '#f43f5e');
+                                this.spawnParticleBurst(entity.x + entity.w / 2, entity.y + entity.h / 2, '#f43f5e', 18);
+                                entity.vx = -entity.facing * 260;
+                                entity.vy = -220;
+                            }
+                        }
+                    }
                     // Portal / Victory Goal
                     else if (other.type === 'portal') {
                         if (entity.x + entity.w > other.x && entity.x < other.x + other.w &&
@@ -1841,46 +2137,63 @@ export class LoopingInterpreter {
                             this.triggerVictory();
                         }
                     }
-                    // Enemy Interaction: Stomp vs Collision Damage
-                    else if (other.type === 'enemy' && other.isAlive) {
+                    // Enemy & Boss Interaction: Stomp vs Collision Damage
+                    else if ((other.type === 'enemy' || other.type === 'boss') && other.isAlive) {
                         if (entity.x + entity.w > other.x && entity.x < other.x + other.w &&
                             entity.y + entity.h >= other.y && entity.y <= other.y + other.h) {
                             
-                            // Stomp from above!
-                            if (entity.vy > 0 && (entity.y + entity.h) <= (other.y + other.h * 0.5 + 10)) {
-                                other.isAlive = false;
-                                entity.vy = -380; // Rebound bounce!
+                            // Stomp from above (or Overdrive Slam)!
+                            if ((entity.vy > 0 && (entity.y + entity.h) <= (other.y + other.h * 0.45 + 12)) || (entity.isDashing && entity.overdrive)) {
+                                const stompDmg = entity.overdrive ? 150 : (other.type === 'boss' ? 90 : other.health);
+                                other.health -= stompDmg;
+                                entity.vy = -410;
                                 entity.doubleJumpAvailable = true;
-                                this.score += 250;
+                                this.combo = (this.combo || 0) + 1;
+                                this.comboTimer = 3.5;
                                 this.playSfx('stomp');
-                                this.addPopup(other.x + other.w / 2, other.y - 14, '+250 STOMP!', '#38bdf8');
-                                this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, '#ef4444', 26);
-                                this.log(`💥 Enemigo "${other.name}" neutralizado por pisada! (+250 Pts)`, 'success');
+                                if (other.health <= 0) {
+                                    other.isAlive = false;
+                                    const pts = other.type === 'boss' ? 1000 : 250 * Math.min(4, this.combo);
+                                    this.score += pts;
+                                    this.camera.shake = other.type === 'boss' ? 18 : 8;
+                                    this.addPopup(other.x + other.w / 2, other.y - 14, `+${pts} ${other.type === 'boss' ? 'BOSS DEFEATED!' : 'STOMP!'}`, '#38bdf8');
+                                    this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, '#ef4444', other.type === 'boss' ? 48 : 26);
+                                    this.log(`💥 ${other.type === 'boss' ? 'Jefe' : 'Enemigo'} "${other.name}" derrotado! (+${pts} Pts)`, 'success');
+                                } else {
+                                    this.score += 120;
+                                    this.camera.shake = 10;
+                                    this.addPopup(other.x + other.w / 2, other.y - 14, `-${stompDmg} BOSS HIT!`, '#fbbf24');
+                                    this.spawnParticleBurst(other.x + other.w / 2, other.y + 12, '#fbbf24', 22);
+                                }
                             } 
                             // Collision Damage to player
                             else if (entity.invulnerableTimer <= 0) {
-                                entity.health -= 25;
+                                const hitDmg = other.type === 'boss' ? 35 : 25;
+                                entity.health -= hitDmg;
                                 entity.invulnerableTimer = 1.0;
-                                this.camera.shake = 9;
+                                this.camera.shake = 11;
                                 this.playSfx('hurt');
-                                this.addPopup(entity.x, entity.y - 12, '-25 HP', '#ef4444');
+                                this.addPopup(entity.x, entity.y - 12, `-${hitDmg} HP`, '#ef4444');
                                 this.spawnParticleBurst(entity.x + entity.w / 2, entity.y + entity.h / 2, '#ef4444', 16);
-                                entity.vx = -entity.facing * 240;
-                                entity.vy = -220;
-
-                                if (entity.health <= 0) {
-                                    this.lives--;
-                                    if (this.lives > 0) {
-                                        entity.health = entity.maxHealth;
-                                        entity.x = 100;
-                                        entity.y = 280;
-                                        this.log(`⚠️ Te quedan ${this.lives} vidas. Reapareciendo...`, 'error');
-                                    } else {
-                                        this.triggerGameOver();
-                                    }
-                                }
+                                entity.vx = -entity.facing * 260;
+                                entity.vy = -230;
                             }
                         }
+                    }
+                }
+
+                // Check player death & Checkpoint Respawn
+                if (entity.health <= 0) {
+                    this.lives--;
+                    if (this.lives > 0) {
+                        entity.health = entity.maxHealth;
+                        entity.x = entity.spawnX !== undefined ? entity.spawnX : 100;
+                        entity.y = entity.spawnY !== undefined ? entity.spawnY : 280;
+                        entity.vx = 0;
+                        entity.vy = 0;
+                        this.log(`⚠️ Te quedan ${this.lives} vidas. Reapareciendo en Checkpoint (${Math.round(entity.x)}, ${Math.round(entity.y)})...`, 'error');
+                    } else {
+                        this.triggerGameOver();
                     }
                 }
 
@@ -1894,22 +2207,53 @@ export class LoopingInterpreter {
                 if (entity.x < 0) entity.x = 0;
                 if (entity.x + entity.w > this.world.width) entity.x = this.world.width - entity.w;
 
-            } else if (entity.type === 'enemy' && entity.isAlive) {
-                // Autonomous AI Patrol for Enemy NPCs
-                entity.x += entity.dir * entity.speed * dt;
+            } else if ((entity.type === 'enemy' || entity.type === 'boss') && entity.isAlive) {
+                // Autonomous AI Patrol for Enemy NPCs & Bosses
+                const spdMult = (entity.type === 'boss' && entity.enraged) ? 1.45 : 1.0;
+                entity.x += entity.dir * entity.speed * spdMult * dt;
                 if (entity.x >= entity.maxX) { entity.x = entity.maxX; entity.dir = -1; }
                 if (entity.x <= entity.minX) { entity.x = entity.minX; entity.dir = 1; }
+
+                // Boss Ranged Plasma Attacks & Enrage State
+                if (entity.type === 'boss') {
+                    if (!entity.enraged && entity.health <= entity.maxHealth * 0.5) {
+                        entity.enraged = true;
+                        this.camera.shake = 14;
+                        this.addPopup(entity.x, entity.y - 24, '⚠️ BOSS ENRAGED!', '#ef4444');
+                        this.spawnParticleBurst(entity.x + entity.w / 2, entity.y + entity.h / 2, '#ef4444', 32);
+                    }
+                    entity.fireTimer = (entity.fireTimer || 1.6) - dt;
+                    const pl = this.getPlayer();
+                    if (entity.fireTimer <= 0 && pl && Math.abs(pl.x - entity.x) < 620) {
+                        entity.fireTimer = entity.enraged ? (entity.fireRate * 0.62) : entity.fireRate;
+                        const bDir = pl.x < entity.x ? -1 : 1;
+                        entity.dir = bDir;
+                        this.projectiles.push({
+                            type: 'projectile',
+                            x: bDir > 0 ? entity.x + entity.w : entity.x - 18,
+                            y: entity.y + entity.h * 0.45,
+                            vx: bDir * (entity.enraged ? 430 : 340),
+                            vy: 0,
+                            w: 18,
+                            h: 8,
+                            color: '#f43f5e',
+                            isPlayer: false,
+                            damage: entity.enraged ? 30 : 20,
+                            life: 2.0
+                        });
+                        this.playSfx('shoot');
+                    }
+                }
             }
         }
 
-        // 3. Update Projectiles
+        // 3. Update Projectiles (Player & Boss/Enemy)
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
             const pr = this.projectiles[i];
             pr.x += pr.vx * dt;
             pr.y += pr.vy * dt;
             pr.life -= dt;
 
-            // Spawn subtle trail
             if (Math.random() < 0.4) {
                 this.particles.push({
                     x: pr.x + (pr.vx > 0 ? 0 : pr.w),
@@ -1923,27 +2267,60 @@ export class LoopingInterpreter {
                 });
             }
 
-            // Check collision with enemies
             if (pr.isPlayer) {
                 for (let other of this.gameEntities) {
-                    if (other.type === 'enemy' && other.isAlive) {
+                    if ((other.type === 'enemy' || other.type === 'boss') && other.isAlive) {
                         if (pr.x + pr.w >= other.x && pr.x <= other.x + other.w &&
                             pr.y + pr.h >= other.y && pr.y <= other.y + other.h) {
                             
                             other.health -= pr.damage;
+                            this.combo = (this.combo || 0) + 1;
+                            this.comboTimer = 3.5;
                             this.playSfx('stomp');
-                            this.addPopup(other.x + other.w / 2, other.y - 10, `-${pr.damage}`, '#38bdf8');
-                            this.spawnParticleBurst(pr.x, pr.y, '#38bdf8', 12);
-                            pr.life = 0; // Destroy projectile
+                            this.addPopup(other.x + other.w / 2, other.y - 10, `-${pr.damage}`, pr.color || '#38bdf8');
+                            this.spawnParticleBurst(pr.x, pr.y, pr.color || '#38bdf8', 12);
+                            pr.life = 0;
 
                             if (other.health <= 0) {
                                 other.isAlive = false;
-                                this.score += 200;
-                                this.addPopup(other.x + other.w / 2, other.y - 14, '+200 DESTROYED!', '#fbbf24');
-                                this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, '#ef4444', 24);
+                                const pts = other.type === 'boss' ? 1000 : 200 * Math.min(4, this.combo);
+                                this.score += pts;
+                                this.camera.shake = other.type === 'boss' ? 18 : 7;
+                                this.addPopup(other.x + other.w / 2, other.y - 14, `+${pts} ${other.type === 'boss' ? 'BOSS SLAIN!' : 'DESTROYED!'}`, '#fbbf24');
+                                this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, '#ef4444', other.type === 'boss' ? 48 : 24);
                             }
                             break;
                         }
+                    } else if (other.type === 'breakable' && !other.broken) {
+                        if (pr.x + pr.w >= other.x && pr.x <= other.x + other.w &&
+                            pr.y + pr.h >= other.y && pr.y <= other.y + other.h) {
+                            other.health -= pr.damage;
+                            this.playSfx('stomp');
+                            this.spawnParticleBurst(pr.x, pr.y, other.color || '#f59e0b', 10);
+                            pr.life = 0;
+                            if (other.health <= 0) {
+                                other.broken = true;
+                                this.score += (other.points || 120);
+                                this.addPopup(other.x, other.y - 10, `+${other.points || 120} BREAK!`, '#fbbf24');
+                                this.spawnParticleBurst(other.x + other.w / 2, other.y + other.h / 2, other.color || '#f59e0b', 24);
+                            }
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // Enemy/Boss Projectile hitting Player
+                const pl = this.getPlayer();
+                if (pl && !this.gameOver && pl.invulnerableTimer <= 0 && !pl.isDashing) {
+                    if (pr.x + pr.w >= pl.x && pr.x <= pl.x + pl.w &&
+                        pr.y + pr.h >= pl.y && pr.y <= pl.y + pl.h) {
+                        pl.health -= pr.damage || 20;
+                        pl.invulnerableTimer = 0.9;
+                        this.camera.shake = 9;
+                        this.playSfx('hurt');
+                        this.addPopup(pl.x, pl.y - 12, `-${pr.damage || 20} HP`, '#f43f5e');
+                        this.spawnParticleBurst(pr.x, pr.y, '#f43f5e', 16);
+                        pr.life = 0;
                     }
                 }
             }
@@ -2004,14 +2381,48 @@ export class LoopingInterpreter {
         const shakeX = (Math.random() - 0.5) * this.camera.shake;
         const shakeY = (Math.random() - 0.5) * this.camera.shake;
 
-        // 1. Clear Stage & Deep Cyber Background
-        ctx.fillStyle = '#06090f';
+        // 1. Clear Stage & Scenario Atmosphere Background
+        const sc = this.scenario || { name: 'Holo Cyber Stage', weather: 'stars', bg: '#06090f', accent: '#38bdf8' };
+        ctx.fillStyle = sc.bg || '#06090f';
         ctx.fillRect(0, 0, w, h);
 
-        // 2. Parallax Cyber Starfield & Waves
+        // 2. Parallax Cyber Starfield, Singularity Vortex & Weather FX
         const parallaxX = this.camera.x * 0.15;
         ctx.save();
-        ctx.strokeStyle = 'rgba(99, 102, 241, 0.14)';
+        if (sc.weather === 'void' || sc.weather === 'singularity') {
+            // Black Hole Event Horizon in Parallax Space
+            const bhX = w * 0.52 - (this.camera.x * 0.08) % (w * 0.4);
+            const bhY = h * 0.38;
+            const bhGrad = ctx.createRadialGradient(bhX, bhY, 12, bhX, bhY, 130);
+            bhGrad.addColorStop(0, '#000000');
+            bhGrad.addColorStop(0.35, 'rgba(192, 132, 252, 0.32)');
+            bhGrad.addColorStop(0.7, 'rgba(56, 189, 248, 0.12)');
+            bhGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = bhGrad;
+            ctx.beginPath();
+            ctx.arc(bhX, bhY, 130, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (sc.weather === 'rain') {
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+            ctx.lineWidth = 1;
+            for (let r = 0; r < 28; r++) {
+                const rx = ((r * 73 + this.lastTime * 0.25) % w);
+                const ry = ((r * 47 + this.lastTime * 0.65) % h);
+                ctx.beginPath();
+                ctx.moveTo(rx, ry);
+                ctx.lineTo(rx - 4, ry + 14);
+                ctx.stroke();
+            }
+        } else if (sc.weather === 'ember' || sc.weather === 'debris') {
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.28)';
+            for (let d = 0; d < 18; d++) {
+                const dx = ((d * 89 - this.lastTime * 0.06) % w + w) % w;
+                const dy = ((d * 53 - this.lastTime * 0.09) % h + h) % h;
+                ctx.fillRect(dx, dy, 4, 4);
+            }
+        }
+
+        ctx.strokeStyle = 'rgba(99, 102, 241, 0.16)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         for (let x = 0; x <= w + 40; x += 15) {
@@ -2218,37 +2629,124 @@ export class LoopingInterpreter {
                 ctx.fillText(entity.label || "GOAL", entity.x + entity.w / 2, entity.y - 10);
                 ctx.textAlign = 'left';
             }
-            // Autonomous Enemy NPC
-            else if (entity.type === 'enemy' && entity.isAlive) {
-                ctx.fillStyle = entity.color;
-                ctx.shadowColor = entity.color;
-                ctx.shadowBlur = 12;
-                this.roundRect(ctx, entity.x, entity.y, entity.w, entity.h, 8, true, false);
+            // Gravity / Anomaly Zone
+            else if (entity.type === 'gravity_zone') {
+                ctx.save();
+                ctx.fillStyle = 'rgba(192, 132, 252, 0.08)';
+                ctx.strokeStyle = entity.color || '#c084fc';
+                ctx.lineWidth = 1.2;
+                ctx.setLineDash([6, 6]);
+                this.roundRect(ctx, entity.x, entity.y, entity.w, entity.h, 10, true, true);
+                ctx.setLineDash([]);
+                ctx.fillStyle = entity.color || '#c084fc';
+                ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${entity.label || 'LOW-G'} (${entity.scale}G)`, entity.x + entity.w / 2, entity.y + 16);
+                ctx.textAlign = 'left';
+                ctx.restore();
+            }
+            // Checkpoint Beacon
+            else if (entity.type === 'checkpoint') {
+                const cpColor = entity.activated ? '#4ade80' : (entity.color || '#38bdf8');
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(entity.x + 11, entity.y, 6, entity.h);
+                ctx.fillStyle = cpColor;
+                ctx.shadowColor = cpColor;
+                ctx.shadowBlur = entity.activated ? 16 : 8;
+                ctx.beginPath();
+                ctx.arc(entity.x + 14, entity.y + 10, 9, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = 'bold 9.5px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(entity.activated ? '✔ SAVED' : entity.label, entity.x + 14, entity.y - 8);
+                ctx.textAlign = 'left';
+            }
+            // Teleporter Ring
+            else if (entity.type === 'teleporter') {
+                ctx.save();
+                ctx.translate(entity.x + entity.w / 2, entity.y + entity.h / 2);
+                ctx.strokeStyle = entity.color || '#00f5d4';
+                ctx.shadowColor = entity.color || '#00f5d4';
+                ctx.shadowBlur = 14;
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, 20, (entity.angle || 0), (entity.angle || 0) + Math.PI * 1.5);
+                ctx.stroke();
+                ctx.restore();
+                ctx.fillStyle = entity.color || '#00f5d4';
+                ctx.font = 'bold 9.5px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(entity.label || 'WARP', entity.x + entity.w / 2, entity.y - 6);
+                ctx.textAlign = 'left';
+            }
+            // Breakable Barrier
+            else if (entity.type === 'breakable' && !entity.broken) {
+                ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+                ctx.strokeStyle = entity.color || '#f59e0b';
+                ctx.lineWidth = 2;
+                this.roundRect(ctx, entity.x, entity.y, entity.w, entity.h, 5, true, true);
+                ctx.beginPath();
+                ctx.moveTo(entity.x + 6, entity.y + 8);
+                ctx.lineTo(entity.x + entity.w - 6, entity.y + entity.h / 2);
+                ctx.lineTo(entity.x + 10, entity.y + entity.h - 8);
+                ctx.stroke();
+            }
+            // Laser Gate Hazard
+            else if (entity.type === 'laser_hazard') {
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(entity.x - 2, entity.y, entity.w + 4, 8);
+                ctx.fillRect(entity.x - 2, entity.y + entity.h - 8, entity.w + 4, 8);
+                if (entity.active) {
+                    ctx.fillStyle = entity.color || '#f43f5e';
+                    ctx.shadowColor = entity.color || '#f43f5e';
+                    ctx.shadowBlur = 16;
+                    ctx.fillRect(entity.x + 2, entity.y + 8, entity.w - 4, entity.h - 16);
+                    ctx.shadowBlur = 0;
+                } else {
+                    ctx.strokeStyle = 'rgba(244, 63, 94, 0.28)';
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(entity.x + entity.w / 2, entity.y + 8);
+                    ctx.lineTo(entity.x + entity.w / 2, entity.y + entity.h - 8);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            // Autonomous Enemy NPC or Boss
+            else if ((entity.type === 'enemy' || entity.type === 'boss') && entity.isAlive) {
+                const isBoss = entity.type === 'boss';
+                const eColor = (isBoss && entity.enraged) ? '#f43f5e' : entity.color;
+                ctx.fillStyle = eColor;
+                ctx.shadowColor = eColor;
+                ctx.shadowBlur = isBoss ? 20 : 12;
+                this.roundRect(ctx, entity.x, entity.y, entity.w, entity.h, isBoss ? 12 : 8, true, false);
                 ctx.shadowBlur = 0;
 
                 // Glowing Robotic Eye Visor
                 ctx.fillStyle = '#ffffff';
-                const eyeX = entity.dir > 0 ? entity.x + entity.w - 12 : entity.x + 4;
-                ctx.fillRect(eyeX, entity.y + 12, 8, 4);
+                const eyeW = isBoss ? 16 : 8;
+                const eyeH = isBoss ? 7 : 4;
+                const eyeX = entity.dir > 0 ? entity.x + entity.w - eyeW - 6 : entity.x + 6;
+                ctx.fillRect(eyeX, entity.y + (isBoss ? 16 : 12), eyeW, eyeH);
 
-                // Enemy HP Bar
-                if (entity.health < entity.maxHealth) {
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                    ctx.fillRect(entity.x, entity.y - 10, entity.w, 4);
-                    ctx.fillStyle = '#ef4444';
-                    ctx.fillRect(entity.x, entity.y - 10, entity.w * (entity.health / entity.maxHealth), 4);
+                // Enemy/Boss HP Bar
+                if (entity.health < entity.maxHealth || isBoss) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+                    ctx.fillRect(entity.x, entity.y - 12, entity.w, 5);
+                    ctx.fillStyle = isBoss ? '#f43f5e' : '#ef4444';
+                    ctx.fillRect(entity.x, entity.y - 12, entity.w * Math.max(0, entity.health / entity.maxHealth), 5);
                 }
 
                 // Name tag
-                ctx.fillStyle = '#f87171';
-                ctx.font = 'bold 10px Outfit, sans-serif';
+                ctx.fillStyle = isBoss ? '#fbbf24' : '#f87171';
+                ctx.font = isBoss ? 'bold 11.5px Outfit, sans-serif' : 'bold 10px Outfit, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(entity.name, entity.x + entity.w / 2, entity.y - 12);
+                ctx.fillText(isBoss && entity.enraged ? `⚡ ${entity.name} [FURIA]` : entity.name, entity.x + entity.w / 2, entity.y - 16);
                 ctx.textAlign = 'left';
             }
             // Player Hero Character
             else if (entity.isPlayer) {
-                // I-Frame Blinking when hurt
                 if (entity.invulnerableTimer > 0 && Math.floor(this.lastTime / 90) % 2 === 0) {
                     continue;
                 }
@@ -2257,34 +2755,31 @@ export class LoopingInterpreter {
                 ctx.translate(entity.x + entity.w / 2, entity.y + entity.h / 2);
                 ctx.scale((entity.facing || 1) * (entity.squash || 1), entity.stretch || 1);
 
-                // Hero Body Capsule
+                const pCol = entity.overdrive ? '#ef4444' : (entity.color || '#38bdf8');
                 const heroGrad = ctx.createLinearGradient(-entity.w / 2, -entity.h / 2, entity.w / 2, entity.h / 2);
-                heroGrad.addColorStop(0, entity.color || '#38bdf8');
-                heroGrad.addColorStop(1, '#0284c7');
+                heroGrad.addColorStop(0, pCol);
+                heroGrad.addColorStop(1, entity.overdrive ? '#7f1d1d' : '#0284c7');
                 ctx.fillStyle = heroGrad;
-                ctx.shadowColor = entity.color || '#38bdf8';
-                ctx.shadowBlur = 14 + Math.sin(entity.glowPulse || 0) * 4;
+                ctx.shadowColor = pCol;
+                ctx.shadowBlur = (entity.overdrive ? 22 : 14) + Math.sin(entity.glowPulse || 0) * 4;
                 this.roundRect(ctx, -entity.w / 2, -entity.h / 2, entity.w, entity.h, 10, true, false);
                 ctx.shadowBlur = 0;
 
-                // High-Tech Cyber Helmet Visor
                 ctx.fillStyle = '#ffffff';
                 ctx.shadowColor = '#ffffff';
                 ctx.shadowBlur = 6;
                 this.roundRect(ctx, 0, -entity.h / 2 + 10, entity.w / 2 - 2, 7, 3, true, false);
                 ctx.shadowBlur = 0;
 
-                // Jetpack / Thruster on the back
                 ctx.fillStyle = '#1e293b';
                 ctx.fillRect(-entity.w / 2 - 4, -entity.h / 4, 4, entity.h / 2);
 
                 ctx.restore();
 
-                // Player Name Tag
-                ctx.fillStyle = '#38bdf8';
+                ctx.fillStyle = entity.overdrive ? '#ef4444' : '#38bdf8';
                 ctx.font = 'bold 11px Outfit, sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(entity.name, entity.x + entity.w / 2, entity.y - 10);
+                ctx.fillText(entity.overdrive ? `🔥 ${entity.name} [MONSTRUO]` : entity.name, entity.x + entity.w / 2, entity.y - 10);
                 ctx.textAlign = 'left';
             }
         }
@@ -2325,6 +2820,35 @@ export class LoopingInterpreter {
         // ═══════════════════════════════════════════════════════════════
         //  SCREEN SPACE OVERLAYS & HEADS-UP DISPLAY (HUD)
         // ═══════════════════════════════════════════════════════════════
+
+        // Boss HUD Health Bar & Combo Badge
+        const activeBoss = this.gameEntities.find(e => e.type === 'boss' && e.isAlive);
+        if (activeBoss) {
+            const bw = Math.min(340, w - 120);
+            const bx = (w - bw) / 2;
+            const by = 14;
+            ctx.fillStyle = 'rgba(6, 9, 19, 0.85)';
+            ctx.strokeStyle = activeBoss.enraged ? '#f43f5e' : 'rgba(239, 68, 68, 0.5)';
+            ctx.lineWidth = 1.5;
+            this.roundRect(ctx, bx - 10, by - 6, bw + 20, 32, 8, true, true);
+
+            ctx.fillStyle = activeBoss.enraged ? '#fbbf24' : '#f87171';
+            ctx.font = 'bold 10.5px Outfit, monospace, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`👹 ${activeBoss.name} (${Math.max(0, Math.round(activeBoss.health))}/${activeBoss.maxHealth} HP)`, w / 2, by + 7);
+            ctx.textAlign = 'left';
+
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(bx, by + 13, bw, 7);
+            ctx.fillStyle = activeBoss.enraged ? '#f43f5e' : '#ef4444';
+            ctx.fillRect(bx, by + 13, bw * Math.max(0, activeBoss.health / activeBoss.maxHealth), 7);
+        }
+
+        if (this.combo > 1 && this.comboTimer > 0) {
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = 'bold 12px Outfit, monospace, sans-serif';
+            ctx.fillText(`⚡ COMBO x${this.combo}`, 18, h - 56);
+        }
 
         // Render UI HUD Cards & Buttons
         for (let elem of this.renderQueue) {

@@ -191,7 +191,10 @@ class DynamicHTMLWindow extends EventEmitter {
                 // Serve Looping Engine Core JS (`/looping_core.js`)
                 if (url.pathname === '/looping_core.js' || url.pathname === '/LoopingEngine/looping_core.js') {
                     const candidates = [
+                        path.join(__dirname, '../../web/looping_core.js'),
+                        path.join(__dirname, '../../legacy/node/looping_core.js'),
                         path.join(__dirname, '../../LoopingEngine/looping_core.js'),
+                        path.join(process.cwd(), 'web/looping_core.js'),
                         path.join(process.cwd(), 'LoopingEngine/looping_core.js'),
                         path.join(os.homedir(), 'cokistudios.github.io/LoopingEngine/looping_core.js')
                     ];
