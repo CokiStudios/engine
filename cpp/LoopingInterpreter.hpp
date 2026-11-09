@@ -421,6 +421,42 @@ struct CryptoUtils {
         std::string tag = hex_to_bytes(hmac_sha256(key_bytes, iv_bytes + cipher)).substr(0, 16);
         return "🔒 enc:v1:" + base64_encode(iv_bytes) + ":" + base64_encode(cipher + tag);
     }
+
+    static std::string base64url_encode(const std::string& in) {
+        std::string b64 = base64_encode(in);
+        while (!b64.empty() && b64.back() == '=') b64.pop_back();
+        for (char& c : b64) {
+            if (c == '+') c = '-';
+            else if (c == '/') c = '_';
+        }
+        return b64;
+    }
+
+    static std::string csms_decrypt(const std::string& room_id, const std::string& payload) {
+        std::string body = payload;
+        if (body.rfind("🔒 enc:v1:", 0) == 0) body = body.substr(12);
+        else if (body.rfind("enc:v1:", 0) == 0) body = body.substr(7);
+        else return payload;
+
+        auto col = body.find(':');
+        if (col == std::string::npos) return "";
+        std::string iv_b64 = body.substr(0, col);
+        std::string cipher_b64 = body.substr(col + 1);
+        std::string iv_bytes = base64_decode(iv_b64);
+        std::string cipher_tag = base64_decode(cipher_b64);
+        if (cipher_tag.size() < 16) return "";
+        std::string cipher = cipher_tag.substr(0, cipher_tag.size() - 16);
+        std::string key_hex = sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+        std::string key_bytes = hex_to_bytes(key_hex);
+        std::string plain;
+        plain.resize(cipher.size());
+        for (size_t i = 0; i < cipher.size(); ++i) {
+            unsigned char k = static_cast<unsigned char>(key_bytes[i % key_bytes.size()]);
+            unsigned char v = static_cast<unsigned char>(iv_bytes[i % iv_bytes.size()]);
+            plain[i] = static_cast<char>(static_cast<unsigned char>(cipher[i]) ^ k ^ v);
+        }
+        return plain;
+    }
 };
 
 class Interpreter {
@@ -434,15 +470,83 @@ public:
     std::unordered_set<std::string> imported_modules;
     std::unordered_set<std::string> imported_python_modules;
     std::string app_name = "HoloApp";
-    std::string app_version = "1.0.0-commercial";
-    std::string arch_version = "2.8A";
-    std::string edition = "Commercial Edition";
+    std::string base_version = "1.1";
+    std::string engine_version = "1.1";
+    std::string semver = "1.1.0";
+    std::string app_version = "1.1";
+    std::string arch_version = "3.0A";
+    std::string channel = "prod";
+    std::string channel_name = "Looping";
+    std::string edition = "Production Release (Arch 3.0A Quantum Synthesis)";
+    bool channel_initialized = false;
     std::string target_platform = "Shine Loop Console (Holo Looping OoS)";
     std::string ui_profile = "xui";
     std::string theme = "frosted_aqua_a17";
     UIProfileSpecs active_ui_specs = resolve_ui_profile("xui");
     PythonBridge python_bridge;
     DynamicWindow current_window;
+    loop_math::Scene3D current_scene3d;
+
+    static loop_math::Vec3 val_to_vec3(const Value& v) {
+        if (v.type == ValueType::List && v.list_val) {
+            const auto& l = *v.list_val;
+            return {
+                l.size() > 0 ? l[0].as_number() : 0.0,
+                l.size() > 1 ? l[1].as_number() : 0.0,
+                l.size() > 2 ? l[2].as_number() : 0.0
+            };
+        }
+        if (v.type == ValueType::Map && v.map_val) {
+            const auto& m = *v.map_val;
+            auto gx = m.find("x"); auto gy = m.find("y"); auto gz = m.find("z");
+            return {
+                gx != m.end() ? gx->second.as_number() : 0.0,
+                gy != m.end() ? gy->second.as_number() : 0.0,
+                gz != m.end() ? gz->second.as_number() : 0.0
+            };
+        }
+        return {0.0, 0.0, 0.0};
+    }
+
+    static Value vec3_to_val(const loop_math::Vec3& v) {
+        return Value(std::vector<Value>{Value(v.x), Value(v.y), Value(v.z)});
+    }
+
+    static loop_math::Quat val_to_quat(const Value& v) {
+        if (v.type == ValueType::List && v.list_val && v.list_val->size() >= 4) {
+            const auto& l = *v.list_val;
+            return {l[0].as_number(), l[1].as_number(), l[2].as_number(), l[3].as_number()};
+        }
+        return loop_math::Quat::identity();
+    }
+
+    static Value quat_to_val(const loop_math::Quat& q) {
+        return Value(std::vector<Value>{Value(q.x), Value(q.y), Value(q.z), Value(q.w)});
+    }
+
+    static loop_math::Mat4 val_to_mat4(const Value& v) {
+        loop_math::Mat4 m = loop_math::Mat4::identity();
+        if (v.type == ValueType::List && v.list_val && v.list_val->size() >= 16) {
+            for (size_t i = 0; i < 16; ++i) m.m[i] = (*v.list_val)[i].as_number();
+        }
+        return m;
+    }
+
+    static Value mat4_to_val(const loop_math::Mat4& m) {
+        std::vector<Value> out;
+        out.reserve(16);
+        for (size_t i = 0; i < 16; ++i) out.push_back(Value(m.m[i]));
+        return Value(out);
+    }
+
+    static Value rayhit_to_val(const loop_math::RayHit3D& r) {
+        std::unordered_map<std::string, Value> m;
+        m["hit"] = Value(r.hit);
+        m["distance"] = Value(r.distance);
+        m["point"] = vec3_to_val(r.point);
+        m["normal"] = vec3_to_val(r.normal);
+        return Value(m);
+    }
 
     bool has_returned = false;
     bool has_broken = false;
@@ -552,16 +656,69 @@ public:
         variables["TAU"] = Value(6.28318530717958647692);
         variables["PHI"] = Value(1.61803398874989484820);
 
+        // Builtin CS Ecosystem Constants (Arch 3.0A)
+        if (!channel_initialized) {
+            channel_initialized = true;
+            const char* env_ch = getenv("LOOPING_CHANNEL");
+            if (env_ch && *env_ch) {
+                set_channel(env_ch);
+            }
+        }
+        variables["CSID_CLIENT_ID"] = Value("c0c11009-4ce0-4b11-8a01-1009c0c1e001");
+        variables["CSMS_SALT"] = Value("CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+        variables["ARCH_VERSION"] = Value(arch_version);
+        variables["LOOPING_VERSION"] = Value(engine_version);
+        variables["LOOPING_CHANNEL"] = Value(channel);
+        variables["LOOPING_CHANNEL_NAME"] = Value(channel_name);
+        variables["csid_authenticated"] = Value(false);
+
         // Initialize Dynamic Window subsystem
         current_window = DynamicWindow(app_name + " Window", 850, 540, ui_profile);
         current_window.set_theme(theme);
     }
 
+    void set_channel(const std::string& ch_raw) {
+        std::string ch = ch_raw;
+        for (char& c : ch) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (ch == "alpha" || ch == "alpha!" || ch == "experimental" || ch == "super-experimental") {
+            channel = "alpha";
+            channel_name = "Alpha! Looping";
+            engine_version = base_version + "-alpha";
+            semver = "1.1.0-alpha";
+            edition = "Alpha! Looping — Super Experimental (Arch " + arch_version + ")";
+        } else if (ch == "omega" || ch == "rc" || ch == "release-candidate") {
+            channel = "omega";
+            channel_name = "Omega Looping";
+            engine_version = base_version + "-omega";
+            semver = "1.1.0-omega";
+            edition = "Omega Looping — Release Candidate / RC (Arch " + arch_version + ")";
+        } else {
+            channel = "prod";
+            channel_name = "Looping";
+            engine_version = base_version;
+            semver = "1.1.0";
+            edition = "Production Release (Arch " + arch_version + " Quantum Synthesis)";
+        }
+        app_version = engine_version;
+        variables["LOOPING_VERSION"] = Value(engine_version);
+        variables["LOOPING_CHANNEL"] = Value(channel);
+        variables["LOOPING_CHANNEL_NAME"] = Value(channel_name);
+    }
+
     void print_banner() {
+        std::string badge = "[LOOPING]";
+        std::string subtitle = "Core Production Engine v" + engine_version;
+        if (channel == "alpha") {
+            badge = "[ALPHA! LOOPING]";
+            subtitle = "Super Experimental Engine v" + engine_version;
+        } else if (channel == "omega") {
+            badge = "[OMEGA LOOPING]";
+            subtitle = "Release Candidate (RC) Engine v" + engine_version;
+        }
         std::cout << "\n" << color::BOLD << color::PURPLE << "----------------------------------------------------------------------" << color::RESET << "\n";
-        std::cout << color::BOLD << color::CYAN << "[LOOPING COMMERCIAL]" << color::RESET << " " 
-                  << color::GREEN << "Core Production Engine v" << app_version << color::RESET << " " 
-                  << color::YELLOW << "(Arch " << arch_version << " / POSIX Native)" << color::RESET << "\n";
+        std::cout << color::BOLD << color::CYAN << badge << color::RESET << " " 
+                  << color::GREEN << subtitle << color::RESET << " " 
+                  << color::YELLOW << "(Arch " << arch_version << " / Quantum 3D & CS Ecosystem)" << color::RESET << "\n";
         std::cout << color::BOLD << "Edition: " << color::RESET << edition 
                   << " | " << color::BOLD << "Kernel: " << color::RESET << "Holo Looping OoS & Coki Studios Runtime\n";
         std::cout << color::CYAN << "By Coki Studios & Holo Entertainment" << color::RESET << "\n";
@@ -612,13 +769,28 @@ public:
                 return Value(static_cast<int64_t>(std::max(1u, std::thread::hardware_concurrency())));
             }
             if (n == "sys.version" || n == "looping.version") {
-                return Value(app_version);
+                return Value(engine_version);
+            }
+            if (n == "sys.semver" || n == "looping.semver") {
+                return Value(semver);
+            }
+            if (n == "sys.channel" || n == "looping.channel") {
+                return Value(channel);
+            }
+            if (n == "sys.channel_name" || n == "looping.channel_name") {
+                return Value(channel_name);
             }
             if (n == "sys.edition" || n == "looping.edition") {
                 return Value(edition);
             }
             if (n == "sys.arch_version" || n == "looping.arch_version") {
                 return Value(arch_version);
+            }
+            if (n == "csid.client_id" || n == "CSID_CLIENT_ID") {
+                return Value("c0c11009-4ce0-4b11-8a01-1009c0c1e001");
+            }
+            if (n == "csms.salt" || n == "CSMS_SALT") {
+                return Value("CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
             }
 
             auto it = variables.find(n);
@@ -850,7 +1022,11 @@ public:
                     obj_var != "json" && obj_var != "csv" && obj_var != "file" &&
                     obj_var != "sys" && obj_var != "time" && obj_var != "datetime" &&
                     obj_var != "url" && obj_var != "window" && obj_var != "compiler" &&
-                    obj_var != "swiftui" &&
+                    obj_var != "swiftui" && obj_var != "snippet" &&
+                    obj_var != "csid" && obj_var != "csms" && obj_var != "game" &&
+                    obj_var != "game_plus" && obj_var != "utils" && obj_var != "core_utils" &&
+                    obj_var != "ai" && obj_var != "sound" && obj_var != "audio" &&
+                    obj_var != "cpp_snippets" &&
                     obj_var != "str" && obj_var != "base64" && obj_var != "env" && obj_var != "button") {
                     if (method_name == "push" || method_name == "append") {
                         if (!evaluated_args.empty()) vit->second.push(evaluated_args[0]);
@@ -1152,14 +1328,11 @@ public:
                     for (const auto& b : current_window.buttons) {
                         if (b.text == target || b.action == target) {
                             if (!b.snippet.empty()) {
-                                std::string snip = b.snippet;
-                                size_t p = snip.find_first_not_of(" \t\r\n");
-                                std::string prefix = (p != std::string::npos) ? snip.substr(p) : "";
-                                if (prefix.rfind("#!python", 0) == 0 || prefix.rfind("import ", 0) == 0) {
-                                    python_bridge.execute_block(snip, variables);
-                                } else {
-                                    execute_code(snip);
-                                }
+                                execute_snippet_code(b.action.empty() ? b.text : b.action, b.snippet);
+                            } else if (!b.action.empty() && python_snippets.find(b.action) != python_snippets.end()) {
+                                execute_snippet_code(b.action, python_snippets[b.action]);
+                            } else if (!b.action.empty() && functions.find(b.action) != functions.end()) {
+                                invoke_callable(b.action, {});
                             }
                             return Value(true);
                         }
@@ -2644,6 +2817,691 @@ public:
                 return Value(std::unordered_map<std::string, Value>{});
             }
 
+            // ── CS Ecosystem Integrated Modules & Release Channels (Arch 3.0A) ──
+            if (name == "looping.set_channel" || name == "sys.set_channel") {
+                std::string ch = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "prod";
+                set_channel(ch);
+                return Value(channel_name);
+            }
+            if (name == "looping.channels" || name == "sys.channels") {
+                std::unordered_map<std::string, Value> ch_map;
+                ch_map["alpha"] = Value("Alpha! Looping (Super Experimental)");
+                ch_map["omega"] = Value("Omega Looping (Release Candidate / RC)");
+                ch_map["prod"] = Value("Looping (Production Release)");
+                return Value(ch_map);
+            }
+
+            // 1. CS ID Connect (PKCE S256 & Identity)
+            if (name == "csid.client_id") {
+                return Value("c0c11009-4ce0-4b11-8a01-1009c0c1e001");
+            }
+            if (name == "csid.login_url" || name == "csid.get_login_url") {
+                std::string redirect_uri = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "https://cokistudios.com/client-demo";
+                std::string scope = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "openid profile email offline_access";
+                std::string verifier_raw = CryptoUtils::sha256_hex("csid_pkce_" + CryptoUtils::uuid_v4());
+                std::string verifier_bytes = CryptoUtils::hex_to_bytes(verifier_raw);
+                std::string challenge_bytes = CryptoUtils::hex_to_bytes(CryptoUtils::sha256_hex(verifier_bytes));
+                std::string challenge = CryptoUtils::base64url_encode(challenge_bytes);
+                std::string csrf_state = "cs_csrf_" + CryptoUtils::sha256_hex(CryptoUtils::uuid_v4()).substr(0, 16);
+
+                auto urlencode = [](const std::string& val) -> std::string {
+                    std::ostringstream escaped;
+                    for (char c : val) {
+                        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') escaped << c;
+                        else if (c == ' ') escaped << "+";
+                        else escaped << '%' << std::setw(2) << std::setfill('0') << std::hex << (int)(unsigned char)c;
+                    }
+                    return escaped.str();
+                };
+
+                std::string url = "https://cokistudios.com/authorize?client_id=c0c11009-4ce0-4b11-8a01-1009c0c1e001"
+                                  "&redirect_uri=" + urlencode(redirect_uri) +
+                                  "&response_type=code" +
+                                  "&scope=" + urlencode(scope) +
+                                  "&code_challenge=" + challenge +
+                                  "&code_challenge_method=S256" +
+                                  "&state=" + csrf_state;
+                return Value(url);
+            }
+            if (name == "csid.is_authenticated") {
+                auto it = variables.find("csid_authenticated");
+                return Value(it != variables.end() && it->second.is_truthy());
+            }
+            if (name == "csid.whoami") {
+                auto it_auth = variables.find("csid_authenticated");
+                if (it_auth != variables.end() && it_auth->second.is_truthy()) {
+                    auto it_u = variables.find("csid_user");
+                    if (it_u != variables.end()) return it_u->second;
+                }
+                return Value();
+            }
+            if (name == "csid.logout") {
+                variables["csid_authenticated"] = Value(false);
+                variables.erase("csid_user");
+                return Value(true);
+            }
+            if (name == "csid.trigger_auth") {
+                std::string u_name = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "Jerix Ortiz";
+                std::string u_email = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "jerix@cokistudios.com";
+
+                std::unordered_map<std::string, Value> u;
+                u["id"] = Value("usr_cs_" + CryptoUtils::sha256_hex(CryptoUtils::uuid_v4()).substr(0, 12));
+                u["name"] = Value(u_name);
+                u["email"] = Value(u_email);
+                u["client_id"] = Value("c0c11009-4ce0-4b11-8a01-1009c0c1e001");
+                u["scope"] = Value("openid profile email offline_access");
+                std::time_t now_t = std::time(nullptr);
+                std::tm now_tm{};
+#if defined(_WIN32)
+                gmtime_s(&now_tm, &now_t);
+#else
+                gmtime_r(&now_t, &now_tm);
+#endif
+                char time_buf[64];
+                std::strftime(time_buf, sizeof(time_buf), "%Y-%m-%dT%H:%M:%SZ", &now_tm);
+                u["auth_time"] = Value(std::string(time_buf));
+                u["provider"] = Value("CS ID Connect PKCE S256 (Hardware-Backed)");
+                u["verified"] = Value(true);
+
+                variables["csid_user"] = Value(u);
+                variables["csid_authenticated"] = Value(true);
+                std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 440 Hz for 50 ms\n";
+                std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 880 Hz for 80 ms\n";
+                return Value(u);
+            }
+            if (name == "csid.render_button") {
+                double bx = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 120.0;
+                double by = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 140.0;
+                std::string lbl = evaluated_args.size() >= 3 ? evaluated_args[2].as_string() : "Conectar con CS ID";
+                current_window.add_card("CS ID CONNECT", "Hardware-Backed Single Sign-On\nCoki Studios Identity Services", bx, by, 320, 110, "CS-ID", "🔐");
+                current_window.add_button(lbl, "csid_login_trigger_auth", bx + 16, by + 65, 220, 36);
+                return Value(true);
+            }
+
+            // 2. CSMS (Coki Studios Messaging Service - Hardware-Backed E2EE)
+            if (name == "csms.salt") {
+                return Value("CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+            }
+            if (name == "csms.derive_key") {
+                std::string room_id = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "default";
+                return Value(CryptoUtils::sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR"));
+            }
+            if (name == "csms.encrypt" || name == "csms.encrypt_payload") {
+                std::string room_id = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "default";
+                std::string msg = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "";
+                return Value(CryptoUtils::csms_payload(room_id, msg));
+            }
+            if (name == "csms.decrypt" || name == "csms.decrypt_payload") {
+                std::string room_id = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "default";
+                std::string payload = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "";
+                return Value(CryptoUtils::csms_decrypt(room_id, payload));
+            }
+            if (name == "csms.sign") {
+                std::string key = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                std::string msg = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "";
+                return Value(CryptoUtils::hmac_sha256(key, msg));
+            }
+
+            // 3. Core Utils (loop-core-utils / utils)
+            if (name == "utils.pad" || name == "core_utils.pad") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                int64_t target_len = evaluated_args.size() >= 2 ? evaluated_args[1].as_int() : 0;
+                std::string pad_ch = evaluated_args.size() >= 3 ? evaluated_args[2].as_string() : " ";
+                if (pad_ch.empty()) pad_ch = " ";
+                while (static_cast<int64_t>(s.size()) < target_len) s += pad_ch[0];
+                return Value(s);
+            }
+            if (name == "utils.slugify" || name == "core_utils.slugify") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                std::string slug;
+                bool prev_dash = false;
+                for (char c : s) {
+                    if (isalnum(c)) {
+                        slug += tolower(c);
+                        prev_dash = false;
+                    } else if (!prev_dash && !slug.empty()) {
+                        slug += '-';
+                        prev_dash = true;
+                    }
+                }
+                while (!slug.empty() && slug.back() == '-') slug.pop_back();
+                return Value(slug);
+            }
+            if (name == "utils.format_bytes" || name == "core_utils.format_bytes") {
+                double bytes = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 0.0;
+                static const char* units[] = {"B", "KB", "MB", "GB", "TB"};
+                int u_idx = 0;
+                while (bytes >= 1024.0 && u_idx < 4) {
+                    bytes /= 1024.0;
+                    u_idx++;
+                }
+                std::ostringstream ss;
+                ss << std::fixed << std::setprecision(2) << bytes << " " << units[u_idx];
+                return Value(ss.str());
+            }
+            if (name == "utils.truncate" || name == "core_utils.truncate") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                size_t max_len = evaluated_args.size() >= 2 ? static_cast<size_t>(evaluated_args[1].as_int()) : 20;
+                std::string suffix = evaluated_args.size() >= 3 ? evaluated_args[2].as_string() : "...";
+                if (s.size() > max_len) {
+                    return Value(s.substr(0, max_len) + suffix);
+                }
+                return Value(s);
+            }
+            if (name == "utils.uuid" || name == "core_utils.uuid") {
+                return Value(CryptoUtils::uuid_v4());
+            }
+            if (name == "utils.repeat" || name == "core_utils.repeat") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                int64_t n = evaluated_args.size() >= 2 ? evaluated_args[1].as_int() : 1;
+                std::string out;
+                for (int64_t i = 0; i < n; ++i) out += s;
+                return Value(out);
+            }
+            if (name == "utils.benchmark" || name == "core_utils.benchmark") {
+                if (!evaluated_args.empty()) {
+                    auto t0 = std::chrono::high_resolution_clock::now();
+                    Value res;
+                    if (functions.find(evaluated_args[0].as_string()) != functions.end()) {
+                        res = invoke_callable(evaluated_args[0].as_string(), {});
+                    }
+                    auto t1 = std::chrono::high_resolution_clock::now();
+                    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+                    std::unordered_map<std::string, Value> bm;
+                    bm["duration_ms"] = Value(ms);
+                    bm["result"] = res;
+                    return Value(bm);
+                }
+                return Value(0.0);
+            }
+
+            // 4. Game Plus & Physics (loop-game-plus / game)
+            if (name == "game.collide_aabb" || name == "game_plus.collide_aabb") {
+                if (evaluated_args.size() >= 8) {
+                    double x1 = evaluated_args[0].as_number();
+                    double y1 = evaluated_args[1].as_number();
+                    double w1 = evaluated_args[2].as_number();
+                    double h1 = evaluated_args[3].as_number();
+                    double x2 = evaluated_args[4].as_number();
+                    double y2 = evaluated_args[5].as_number();
+                    double w2 = evaluated_args[6].as_number();
+                    double h2 = evaluated_args[7].as_number();
+                    bool hit = (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+                    return Value(hit);
+                }
+                return Value(false);
+            }
+            if (name == "game.collide_box" || name == "game_plus.collide_box") {
+                auto extract_box = [](const Value& v, double& x, double& y, double& w, double& h) {
+                    if (v.type == ValueType::Map && v.map_val) {
+                        x = v.map_val->count("x") ? (*v.map_val)["x"].as_number() : 0.0;
+                        y = v.map_val->count("y") ? (*v.map_val)["y"].as_number() : 0.0;
+                        w = v.map_val->count("w") ? (*v.map_val)["w"].as_number() : 0.0;
+                        h = v.map_val->count("h") ? (*v.map_val)["h"].as_number() : 0.0;
+                    } else if (v.type == ValueType::List && v.list_val && v.list_val->size() >= 4) {
+                        x = (*v.list_val)[0].as_number();
+                        y = (*v.list_val)[1].as_number();
+                        w = (*v.list_val)[2].as_number();
+                        h = (*v.list_val)[3].as_number();
+                    }
+                };
+                if (evaluated_args.size() >= 2) {
+                    double x1=0, y1=0, w1=0, h1=0, x2=0, y2=0, w2=0, h2=0;
+                    extract_box(evaluated_args[0], x1, y1, w1, h1);
+                    extract_box(evaluated_args[1], x2, y2, w2, h2);
+                    return Value(x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
+                }
+                return Value(false);
+            }
+            if (name == "game.collide_circle" || name == "game_plus.collide_circle") {
+                if (evaluated_args.size() >= 6) {
+                    double x1 = evaluated_args[0].as_number();
+                    double y1 = evaluated_args[1].as_number();
+                    double r1 = evaluated_args[2].as_number();
+                    double x2 = evaluated_args[3].as_number();
+                    double y2 = evaluated_args[4].as_number();
+                    double r2 = evaluated_args[5].as_number();
+                    double dx = x2 - x1;
+                    double dy = y2 - y1;
+                    double dist_sq = dx * dx + dy * dy;
+                    double rad_sum = r1 + r2;
+                    return Value(dist_sq <= (rad_sum * rad_sum));
+                }
+                return Value(false);
+            }
+            if (name == "game.distance" || name == "game_plus.distance") {
+                if (evaluated_args.size() >= 4) {
+                    double x1 = evaluated_args[0].as_number();
+                    double y1 = evaluated_args[1].as_number();
+                    double x2 = evaluated_args[2].as_number();
+                    double y2 = evaluated_args[3].as_number();
+                    return Value(std::hypot(x2 - x1, y2 - y1));
+                }
+                return Value(0.0);
+            }
+            if (name == "game.clamp" || name == "game_plus.clamp") {
+                double val = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 0.0;
+                double mn = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 0.0;
+                double mx = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 1.0;
+                return Value(std::max(mn, std::min(val, mx)));
+            }
+            if (name == "game.lerp" || name == "game_plus.lerp") {
+                double a = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 0.0;
+                double b = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 1.0;
+                double t = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 0.5;
+                return Value(a + (b - a) * t);
+            }
+            if (name == "game.angle_to" || name == "game_plus.angle_to") {
+                if (evaluated_args.size() >= 4) {
+                    double x1 = evaluated_args[0].as_number();
+                    double y1 = evaluated_args[1].as_number();
+                    double x2 = evaluated_args[2].as_number();
+                    double y2 = evaluated_args[3].as_number();
+                    return Value(std::atan2(y2 - y1, x2 - x1));
+                }
+                return Value(0.0);
+            }
+            if (name == "game.poll_gamepad" || name == "game_plus.poll_gamepad") {
+                std::unordered_map<std::string, Value> gp;
+                gp["connected"] = Value(true);
+                gp["x"] = Value(0.0);
+                gp["y"] = Value(0.0);
+                gp["axis_x"] = Value(0.0);
+                gp["axis_y"] = Value(0.0);
+                gp["btn_a"] = Value(false);
+                gp["btn_b"] = Value(false);
+                return Value(gp);
+            }
+            if (name == "game.spawn_particle" || name == "game_plus.spawn_particle") {
+                std::string p_type = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "sparkle";
+                double px = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 0.0;
+                double py = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 0.0;
+                double pvx = evaluated_args.size() >= 4 ? evaluated_args[3].as_number() : 0.0;
+                double pvy = evaluated_args.size() >= 5 ? evaluated_args[4].as_number() : 0.0;
+                std::string pcolor = evaluated_args.size() >= 6 ? evaluated_args[5].as_string() : "#38bdf8";
+                std::cout << color::CYAN << "[PARTICLE]" << color::RESET << " Spawned " << p_type 
+                          << " at (" << px << ", " << py << ") vel=(" << pvx << "," << pvy << ") [" << pcolor << "]\n";
+                std::unordered_map<std::string, Value> part;
+                part["type"] = Value(p_type);
+                part["x"] = Value(px);
+                part["y"] = Value(py);
+                part["vx"] = Value(pvx);
+                part["vy"] = Value(pvy);
+                part["color"] = Value(pcolor);
+                part["alive"] = Value(true);
+                return Value(part);
+            }
+            if (name == "game.play_sfx" || name == "game_plus.play_sfx") {
+                std::string sfx = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "coin";
+                if (sfx == "jump") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 620 Hz for 70 ms\n";
+                } else if (sfx == "coin") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 980 Hz for 90 ms\n";
+                } else if (sfx == "laser") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 1200 Hz for 40 ms\n";
+                } else if (sfx == "hit") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 220 Hz for 120 ms\n";
+                } else if (sfx == "powerup") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 880 Hz for 150 ms\n";
+                } else if (sfx == "checkpoint") {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 750 Hz for 100 ms\n";
+                } else {
+                    std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 440 Hz for 60 ms\n";
+                }
+                return Value(true);
+            }
+            if (name == "game.show_popup" || name == "game_plus.show_popup") {
+                std::string p_title = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "ALERTA";
+                std::cout << color::YELLOW << "[GAME POPUP]" << color::RESET << " Modal: " << p_title << "\n";
+                std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 880 Hz for 50 ms\n";
+                return Value(true);
+            }
+
+            // 4b. Native 3D Mathematics, Quaternions, Matrices, Raycasting & 120Hz Physics (math3d.* / physics3d.* / scene3d.*)
+            if (name == "math3d.vec3" || name == "vec3.new") {
+                double x = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 0.0;
+                double y = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 0.0;
+                double z = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 0.0;
+                return vec3_to_val({x, y, z});
+            }
+            if (name == "math3d.add" || name == "vec3.add") {
+                if (evaluated_args.size() >= 2) return vec3_to_val(val_to_vec3(evaluated_args[0]) + val_to_vec3(evaluated_args[1]));
+                return vec3_to_val({});
+            }
+            if (name == "math3d.sub" || name == "vec3.sub") {
+                if (evaluated_args.size() >= 2) return vec3_to_val(val_to_vec3(evaluated_args[0]) - val_to_vec3(evaluated_args[1]));
+                return vec3_to_val({});
+            }
+            if (name == "math3d.scale" || name == "vec3.scale") {
+                if (evaluated_args.size() >= 2) return vec3_to_val(val_to_vec3(evaluated_args[0]) * evaluated_args[1].as_number());
+                return vec3_to_val({});
+            }
+            if (name == "math3d.dot" || name == "vec3.dot") {
+                if (evaluated_args.size() >= 2) return Value(loop_math::dot(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1])));
+                return Value(0.0);
+            }
+            if (name == "math3d.cross" || name == "vec3.cross") {
+                if (evaluated_args.size() >= 2) return vec3_to_val(loop_math::cross(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1])));
+                return vec3_to_val({});
+            }
+            if (name == "math3d.length" || name == "vec3.length") {
+                if (!evaluated_args.empty()) return Value(val_to_vec3(evaluated_args[0]).length());
+                return Value(0.0);
+            }
+            if (name == "math3d.distance" || name == "vec3.distance" || name == "game3d.distance") {
+                if (evaluated_args.size() >= 2) return Value(loop_math::distance(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1])));
+                return Value(0.0);
+            }
+            if (name == "math3d.normalize" || name == "vec3.normalize") {
+                if (!evaluated_args.empty()) return vec3_to_val(val_to_vec3(evaluated_args[0]).normalized());
+                return vec3_to_val({});
+            }
+            if (name == "math3d.lerp" || name == "vec3.lerp") {
+                if (evaluated_args.size() >= 3) {
+                    return vec3_to_val(loop_math::lerp(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]), evaluated_args[2].as_number()));
+                }
+                return vec3_to_val({});
+            }
+            if (name == "math3d.reflect" || name == "vec3.reflect") {
+                if (evaluated_args.size() >= 2) {
+                    return vec3_to_val(loop_math::reflect(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1])));
+                }
+                return vec3_to_val({});
+            }
+            if (name == "math3d.quat_euler" || name == "quat.euler") {
+                double rx = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 0.0;
+                double ry = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 0.0;
+                double rz = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 0.0;
+                return quat_to_val(loop_math::Quat::from_euler_deg(rx, ry, rz));
+            }
+            if (name == "math3d.quat_axis_angle" || name == "quat.axis_angle") {
+                if (evaluated_args.size() >= 2) {
+                    return quat_to_val(loop_math::Quat::from_axis_angle_deg(val_to_vec3(evaluated_args[0]), evaluated_args[1].as_number()));
+                }
+                return quat_to_val(loop_math::Quat::identity());
+            }
+            if (name == "math3d.quat_mul" || name == "quat.mul") {
+                if (evaluated_args.size() >= 2) {
+                    return quat_to_val(val_to_quat(evaluated_args[0]) * val_to_quat(evaluated_args[1]));
+                }
+                return quat_to_val(loop_math::Quat::identity());
+            }
+            if (name == "math3d.quat_slerp" || name == "quat.slerp") {
+                if (evaluated_args.size() >= 3) {
+                    return quat_to_val(loop_math::Quat::slerp(val_to_quat(evaluated_args[0]), val_to_quat(evaluated_args[1]), evaluated_args[2].as_number()));
+                }
+                return quat_to_val(loop_math::Quat::identity());
+            }
+            if (name == "math3d.quat_rotate" || name == "quat.rotate") {
+                if (evaluated_args.size() >= 2) {
+                    return vec3_to_val(val_to_quat(evaluated_args[0]).rotate(val_to_vec3(evaluated_args[1])));
+                }
+                return vec3_to_val({});
+            }
+            if (name == "math3d.mat4_identity" || name == "mat4.identity") {
+                return mat4_to_val(loop_math::Mat4::identity());
+            }
+            if (name == "math3d.mat4_perspective" || name == "mat4.perspective") {
+                double fov = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 60.0;
+                double asp = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 1.6;
+                double zn  = evaluated_args.size() >= 3 ? evaluated_args[2].as_number() : 0.1;
+                double zf  = evaluated_args.size() >= 4 ? evaluated_args[3].as_number() : 500.0;
+                return mat4_to_val(loop_math::Mat4::perspective(fov, asp, zn, zf));
+            }
+            if (name == "math3d.mat4_look_at" || name == "mat4.look_at") {
+                if (evaluated_args.size() >= 2) {
+                    loop_math::Vec3 up = evaluated_args.size() >= 3 ? val_to_vec3(evaluated_args[2]) : loop_math::Vec3{0, 1, 0};
+                    return mat4_to_val(loop_math::Mat4::look_at(val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]), up));
+                }
+                return mat4_to_val(loop_math::Mat4::identity());
+            }
+            if (name == "math3d.mat4_trs" || name == "mat4.trs") {
+                loop_math::Vec3 p = evaluated_args.size() >= 1 ? val_to_vec3(evaluated_args[0]) : loop_math::Vec3{};
+                loop_math::Vec3 r = evaluated_args.size() >= 2 ? val_to_vec3(evaluated_args[1]) : loop_math::Vec3{};
+                loop_math::Vec3 sc = evaluated_args.size() >= 3 ? val_to_vec3(evaluated_args[2]) : loop_math::Vec3{1, 1, 1};
+                return mat4_to_val(loop_math::Mat4::trs(p, r, sc));
+            }
+            if (name == "math3d.mat4_mul" || name == "mat4.mul") {
+                if (evaluated_args.size() >= 2) {
+                    return mat4_to_val(val_to_mat4(evaluated_args[0]) * val_to_mat4(evaluated_args[1]));
+                }
+                return mat4_to_val(loop_math::Mat4::identity());
+            }
+            if (name == "math3d.transform_point" || name == "mat4.transform_point") {
+                if (evaluated_args.size() >= 2) {
+                    return vec3_to_val(val_to_mat4(evaluated_args[0]).transform_point(val_to_vec3(evaluated_args[1])));
+                }
+                return vec3_to_val({});
+            }
+            if (name == "math3d.project") {
+                loop_math::Vec3 pt = evaluated_args.size() >= 1 ? val_to_vec3(evaluated_args[0]) : loop_math::Vec3{};
+                loop_math::Vec3 eye = evaluated_args.size() >= 2 ? val_to_vec3(evaluated_args[1]) : current_scene3d.cam_pos;
+                loop_math::Vec3 tgt = evaluated_args.size() >= 3 ? val_to_vec3(evaluated_args[2]) : current_scene3d.cam_target;
+                double fov = evaluated_args.size() >= 4 ? evaluated_args[3].as_number() : current_scene3d.cam_fov;
+                double w = evaluated_args.size() >= 5 ? evaluated_args[4].as_number() : 800.0;
+                double h = evaluated_args.size() >= 6 ? evaluated_args[5].as_number() : 480.0;
+                auto pr = loop_math::project_point(pt, eye, tgt, fov, w, h);
+                std::unordered_map<std::string, Value> m;
+                m["x"] = Value(pr.x);
+                m["y"] = Value(pr.y);
+                m["depth"] = Value(pr.depth);
+                m["visible"] = Value(pr.visible);
+                return Value(m);
+            }
+            if (name == "physics3d.collide_sphere" || name == "game3d.collide_sphere") {
+                if (evaluated_args.size() >= 4) {
+                    return Value(loop_math::collide_sphere(
+                        val_to_vec3(evaluated_args[0]), evaluated_args[1].as_number(),
+                        val_to_vec3(evaluated_args[2]), evaluated_args[3].as_number()
+                    ));
+                }
+                return Value(false);
+            }
+            if (name == "physics3d.collide_aabb" || name == "game3d.collide_aabb") {
+                if (evaluated_args.size() >= 4) {
+                    return Value(loop_math::collide_aabb_center(
+                        val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]),
+                        val_to_vec3(evaluated_args[2]), val_to_vec3(evaluated_args[3])
+                    ));
+                }
+                return Value(false);
+            }
+            if (name == "physics3d.collide_capsule_sphere" || name == "game3d.collide_capsule_sphere") {
+                if (evaluated_args.size() >= 5) {
+                    return Value(loop_math::collide_capsule_sphere(
+                        val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]), evaluated_args[2].as_number(),
+                        val_to_vec3(evaluated_args[3]), evaluated_args[4].as_number()
+                    ));
+                }
+                return Value(false);
+            }
+            if (name == "physics3d.raycast_sphere" || name == "game3d.raycast_sphere") {
+                if (evaluated_args.size() >= 4) {
+                    return rayhit_to_val(loop_math::raycast_sphere(
+                        val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]),
+                        val_to_vec3(evaluated_args[2]), evaluated_args[3].as_number()
+                    ));
+                }
+                return rayhit_to_val({});
+            }
+            if (name == "physics3d.raycast_aabb" || name == "game3d.raycast_aabb") {
+                if (evaluated_args.size() >= 4) {
+                    return rayhit_to_val(loop_math::raycast_aabb(
+                        val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]),
+                        val_to_vec3(evaluated_args[2]), val_to_vec3(evaluated_args[3])
+                    ));
+                }
+                return rayhit_to_val({});
+            }
+            if (name == "physics3d.raycast_plane" || name == "game3d.raycast_plane") {
+                if (evaluated_args.size() >= 3) {
+                    double pd = evaluated_args.size() >= 4 ? evaluated_args[3].as_number() : 0.0;
+                    return rayhit_to_val(loop_math::raycast_plane(
+                        val_to_vec3(evaluated_args[0]), val_to_vec3(evaluated_args[1]),
+                        val_to_vec3(evaluated_args[2]), pd
+                    ));
+                }
+                return rayhit_to_val({});
+            }
+            if (name == "physics3d.raycast_scene" || name == "scene3d.raycast") {
+                loop_math::Vec3 orig = evaluated_args.size() >= 1 ? val_to_vec3(evaluated_args[0]) : current_scene3d.cam_pos;
+                loop_math::Vec3 dir  = evaluated_args.size() >= 2 ? val_to_vec3(evaluated_args[1]) : loop_math::Vec3{0, 0, 1};
+                loop_math::RayHit3D best;
+                best.distance = std::numeric_limits<double>::infinity();
+                std::string hit_name = "", hit_type = "";
+                for (const auto& e : current_scene3d.entities) {
+                    if (e.type == "player" || e.type == "terrain") continue;
+                    loop_math::RayHit3D r;
+                    if (e.type == "sphere" || e.type == "crystal" || e.type == "ring" || e.type == "portal") {
+                        r = loop_math::raycast_sphere(orig, dir, e.pos, e.radius);
+                    } else {
+                        r = loop_math::raycast_aabb(orig, dir, e.pos, e.size);
+                    }
+                    if (r.hit && r.distance < best.distance) {
+                        best = r;
+                        hit_name = e.name;
+                        hit_type = e.type;
+                    }
+                }
+                if (!best.hit) best.distance = 0.0;
+                std::unordered_map<std::string, Value> m;
+                m["hit"] = Value(best.hit);
+                m["distance"] = Value(best.distance);
+                m["entity"] = Value(hit_name);
+                m["type"] = Value(hit_type);
+                m["point"] = vec3_to_val(best.point);
+                m["normal"] = vec3_to_val(best.normal);
+                return Value(m);
+            }
+            if (name == "physics3d.step_body" || name == "game3d.step_body") {
+                loop_math::RigidBody3DState b;
+                b.gravity = current_scene3d.gravity;
+                b.friction = current_scene3d.friction;
+                b.bounce = current_scene3d.bounce;
+                if (!evaluated_args.empty() && evaluated_args[0].type == ValueType::Map && evaluated_args[0].map_val) {
+                    const auto& in_m = *evaluated_args[0].map_val;
+                    if (in_m.count("pos")) b.pos = val_to_vec3(in_m.at("pos"));
+                    if (in_m.count("vel")) b.vel = val_to_vec3(in_m.at("vel"));
+                    if (in_m.count("force")) b.force = val_to_vec3(in_m.at("force"));
+                    if (in_m.count("mass")) b.mass = in_m.at("mass").as_number();
+                    if (in_m.count("radius")) b.radius = in_m.at("radius").as_number();
+                    if (in_m.count("gravity")) b.gravity = in_m.at("gravity").as_number();
+                    if (in_m.count("drag")) b.drag = in_m.at("drag").as_number();
+                    if (in_m.count("friction")) b.friction = in_m.at("friction").as_number();
+                    if (in_m.count("bounce")) b.bounce = in_m.at("bounce").as_number();
+                    if (in_m.count("ground_y")) b.ground_y = in_m.at("ground_y").as_number();
+                }
+                double dt = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : (1.0 / 60.0);
+                int sub = evaluated_args.size() >= 3 ? static_cast<int>(evaluated_args[2].as_number()) : current_scene3d.substeps;
+                loop_math::step_rigidbody_3d(b, dt, sub);
+
+                std::unordered_map<std::string, Value> out;
+                out["pos"] = vec3_to_val(b.pos);
+                out["vel"] = vec3_to_val(b.vel);
+                out["grounded"] = Value(b.grounded);
+                out["radius"] = Value(b.radius);
+                out["mass"] = Value(b.mass);
+                return Value(out);
+            }
+            if (name == "scene3d.render_tui") {
+                int cols = evaluated_args.size() >= 1 ? static_cast<int>(evaluated_args[0].as_number()) : 74;
+                int rows = evaluated_args.size() >= 2 ? static_cast<int>(evaluated_args[1].as_number()) : 20;
+                return Value(current_scene3d.render_tui(cols, rows));
+            }
+            if (name == "scene3d.preview") {
+                int cols = evaluated_args.size() >= 1 ? static_cast<int>(evaluated_args[0].as_number()) : 74;
+                int rows = evaluated_args.size() >= 2 ? static_cast<int>(evaluated_args[1].as_number()) : 20;
+                std::cout << current_scene3d.render_tui(cols, rows);
+                return Value(true);
+            }
+            if (name == "scene3d.step") {
+                double dt = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : (1.0 / 60.0);
+                current_scene3d.step(dt);
+                return Value(static_cast<int64_t>(current_scene3d.entities.size()));
+            }
+            if (name == "scene3d.stats") {
+                std::unordered_map<std::string, Value> st;
+                st["active"] = Value(current_scene3d.active);
+                st["world"] = Value(current_scene3d.world_name);
+                st["entities"] = Value(static_cast<int64_t>(current_scene3d.entities.size()));
+                st["lights"] = Value(static_cast<int64_t>(1 + current_scene3d.point_lights.size()));
+                st["substeps"] = Value(static_cast<int64_t>(current_scene3d.substeps));
+                st["effective_hz"] = Value(static_cast<int64_t>(current_scene3d.substeps * 60));
+                st["cam_mode"] = Value(current_scene3d.cam_mode);
+                st["fov"] = Value(current_scene3d.cam_fov);
+                return Value(st);
+            }
+            if (name == "scene3d.clear") {
+                current_scene3d.clear();
+                current_window.entities_3d.clear();
+                return Value(true);
+            }
+
+            // 5. Sound & Synthesizer (audio / sound)
+            if (name == "sound.beep" || name == "audio.beep") {
+                double freq = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 440.0;
+                double dur = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 100.0;
+                std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone " << static_cast<int64_t>(freq) << " Hz for " << static_cast<int64_t>(dur) << " ms\n";
+                return Value(true);
+            }
+            if (name == "sound.play_note" || name == "audio.play_note") {
+                std::string note = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "A4";
+                double dur = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 100.0;
+                double freq = 440.0;
+                if (note == "C4") freq = 261.63;
+                else if (note == "D4") freq = 293.66;
+                else if (note == "E4") freq = 329.63;
+                else if (note == "F4") freq = 349.23;
+                else if (note == "G4") freq = 392.00;
+                else if (note == "A4") freq = 440.00;
+                else if (note == "B4") freq = 493.88;
+                else if (note == "C5") freq = 523.25;
+                std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone " << static_cast<int64_t>(freq) << " Hz (" << note << ") for " << static_cast<int64_t>(dur) << " ms\n";
+                return Value(true);
+            }
+
+            // 6. AI & Inference Bridge (ai / pyloop-ai)
+            if (name == "ai.prompt" || name == "pyloop_ai.prompt") {
+                std::string sys_prompt = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                std::string user_msg = evaluated_args.size() >= 2 ? evaluated_args[1].as_string() : "";
+                std::unordered_map<std::string, Value> res;
+                res["model"] = Value("CS Quantum AI v3.0");
+                res["reply"] = Value("Simulated AI response for: " + user_msg);
+                res["status"] = Value("success");
+                res["safe"] = Value(true);
+                return Value(res);
+            }
+            if (name == "ai.moderate" || name == "pyloop_ai.moderate") {
+                std::unordered_map<std::string, Value> res;
+                res["isSafe"] = Value(true);
+                res["flagged"] = Value(false);
+                res["score"] = Value(0.01);
+                return Value(res);
+            }
+            if (name == "ai.sentiment") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                return Value(s.find("mal") != std::string::npos || s.find("bad") != std::string::npos ? "negative" : "positive");
+            }
+
+            // 7. C++ Native Snippets (cpp_snippets / loop-cpp-snippets)
+            if (name == "cpp_snippets.crc32") {
+                std::string s = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "";
+                return Value(CryptoUtils::crc32_hex(s));
+            }
+            if (name == "cpp_snippets.dot") {
+                if (evaluated_args.size() >= 2 &&
+                    evaluated_args[0].type == ValueType::List && evaluated_args[0].list_val &&
+                    evaluated_args[1].type == ValueType::List && evaluated_args[1].list_val) {
+                    const auto& v1 = *evaluated_args[0].list_val;
+                    const auto& v2 = *evaluated_args[1].list_val;
+                    size_t n = std::min(v1.size(), v2.size());
+                    double s = 0.0;
+                    for (size_t i = 0; i < n; ++i) s += v1[i].as_number() * v2[i].as_number();
+                    return Value(s);
+                }
+                return Value(0.0);
+            }
+
             // User Defined Function Call with return value & default args
             auto fn_it = functions.find(name);
             if (fn_it != functions.end()) {
@@ -2703,7 +3561,7 @@ public:
         if (!root) return;
 
         std::cout << "\n" << color::CYAN << "╭─────────────────────────────────────────────────────────────────╮" << color::RESET << "\n";
-        std::cout << color::CYAN << "│" << color::RESET << color::BOLD << " 🍎 SwiftUI Canvas Preview — Looping Engine v2.9 (Universal)     " << color::RESET << color::CYAN << "│" << color::RESET << "\n";
+        std::cout << color::CYAN << "│" << color::RESET << color::BOLD << " 🍎 SwiftUI Canvas Preview — Looping Engine v1.1 (Arch 3.0A)     " << color::RESET << color::CYAN << "│" << color::RESET << "\n";
         std::cout << color::CYAN << "│" << color::RESET << " Target: Apple Ecosystem (iOS / macOS / visionOS)                " << color::CYAN << "│" << color::RESET << "\n";
         if (!comp_name.empty()) {
             std::string view_line = "│ View: " + comp_name;
@@ -3219,11 +4077,17 @@ public:
                 return; // Already imported to avoid cyclic loops
             }
 
-            // Check if built-in stdlib module
+            // Check if built-in stdlib module (only if no local package on disk)
             static const std::unordered_set<std::string> stdlib_modules = {
-                "math", "crypto", "sys", "system", "csv", "datetime", "regex", "ui", "swiftui", "json", "file"
+                "math", "crypto", "sys", "system", "csv", "datetime", "regex", "ui", "swiftui", "json", "file",
+                "csid", "core_utils", "utils",
+                "game_plus", "game",
+                "csms", "ai",
+                "sound", "audio", "cpp_snippets"
             };
-            if (stdlib_modules.count(mod) > 0) {
+            std::string local_manifest_check = "./modules/" + mod + "/smile.json";
+            std::ifstream mf_check(local_manifest_check);
+            if (!mf_check.good() && stdlib_modules.count(mod) > 0) {
                 imported_modules.insert(mod);
                 return;
             }
@@ -3380,11 +4244,20 @@ public:
                               << color::BOLD << mod << color::RESET << " (" << resolved_path << ")\n";
                     return;
                 }
+                if ((resolved_path.size() >= 4 && (resolved_path.substr(resolved_path.size() - 4) == ".hpp" || resolved_path.substr(resolved_path.size() - 4) == ".cpp")) ||
+                    (resolved_path.size() >= 2 && resolved_path.substr(resolved_path.size() - 2) == ".h")) {
+                    variables[mod + ".cpp_header"] = Value(resolved_path);
+                    std::cout << color::CYAN << "[NATIVE C++17]" << color::RESET << " Linked Hardware-Accelerated Module: "
+                              << color::BOLD << mod << color::RESET << " (" << resolved_path << ")\n";
+                    return;
+                }
 
                 // Pure Looping module (.loop)
                 std::ifstream lf(resolved_path);
                 std::string loop_content((std::istreambuf_iterator<char>(lf)), std::istreambuf_iterator<char>());
+                bool prev_returned = has_returned;
                 execute_code(loop_content);
+                has_returned = prev_returned;
                 std::cout << color::BLUE << "[MODULE]" << color::RESET << " Loaded " << color::BOLD << mod 
                           << color::RESET << " (" << resolved_path << ")\n";
                 return;
@@ -3401,12 +4274,20 @@ public:
             return;
         }
 
-        // 12. App Definition
+        // 12. App / Game / Game3D Definition
         if (auto app = std::dynamic_pointer_cast<AppDefineStmt>(stmt)) {
             app_name = app->app_name;
-            app_version = app->version;
-            std::cout << color::GREEN << "[APP]" << color::RESET << " Registered \"" << app_name 
-                      << "\" v" << app_version << " on " << target_platform << "\n";
+            if (!app->version.empty()) app_version = app->version;
+            if (app->kind == "game3d") {
+                current_scene3d.active = true;
+                current_scene3d.world_name = app->app_name;
+                current_window.is_3d_mode = true;
+                std::cout << color::PURPLE << "[GAME 3D]" << color::RESET << " Registered 3D Title \"" << app_name
+                          << "\" v" << app_version << " on " << target_platform << " (120Hz Sub-Stepping)\n";
+            } else {
+                std::cout << color::GREEN << "[APP]" << color::RESET << " Registered \"" << app_name 
+                          << "\" v" << app_version << " on " << target_platform << "\n";
+            }
             return;
         }
 
@@ -3522,6 +4403,18 @@ public:
             } else if (sp->entity_type == "laser_hazard") {
                 std::cout << color::RED << "[LASER]" << color::RESET << " Rhythmic Laser Gate at (" 
                           << sp->x << ", " << sp->y << ") [Interval: " << sp->interval << "s]\n";
+            } else if (sp->entity_type == "saw") {
+                std::cout << color::RED << "[SAW 2D]" << color::RESET << " Rotating Cyber-Saw at ("
+                          << sp->x << ", " << sp->y << ") [" << sp->axis << ": " << sp->min_pos << ".." << sp->max_pos << "]\n";
+            } else if (sp->entity_type == "turret") {
+                std::cout << color::YELLOW << "[TURRET 2D]" << color::RESET << " Plasma Turret \"" << sp->name
+                          << "\" at (" << sp->x << ", " << sp->y << ") [Range: " << sp->max_pos << "px]\n";
+            } else if (sp->entity_type == "powerup") {
+                std::cout << color::CYAN << "[POWER-UP]" << color::RESET << " Capsule [" << sp->state
+                          << "] at (" << sp->x << ", " << sp->y << ") [\"" << sp->text << "\"]\n";
+            } else if (sp->entity_type == "cube3d" || sp->entity_type == "pyramid3d" || sp->entity_type == "sphere3d" || sp->entity_type == "grid3d") {
+                std::cout << color::PURPLE << color::BOLD << "[3D ENGINE]" << color::RESET << " Mesh " << sp->entity_type
+                          << " \"" << sp->name << "\" at (" << sp->x << ", " << sp->y << ", z:" << sp->z << ") [Size: " << sp->radius << "]\n";
             } else if (sp->entity_type == "portal") {
                 std::cout << color::PURPLE << "[PORTAL]" << color::RESET << " Stage Goal at (" 
                           << sp->x << ", " << sp->y << ") [\"" << sp->text << "\"]\n";
@@ -3529,6 +4422,91 @@ public:
                 std::cout << color::CYAN << "[WORLD]" << color::RESET << " Placed " << sp->entity_type 
                           << " Stage Component\n";
             }
+            return;
+        }
+
+        // 16b. 3D Scene Configuration & 3D Entity Spawning
+        if (auto scfg = std::dynamic_pointer_cast<Scene3DConfigStmt>(stmt)) {
+            current_scene3d.active = true;
+            current_window.is_3d_mode = true;
+            if (scfg->category == "mode") {
+                bool m3d = (scfg->str1 == "3d" || scfg->str1 == "3D");
+                current_scene3d.active = m3d;
+                current_window.is_3d_mode = m3d;
+                std::cout << color::PURPLE << "[ENGINE MODE]" << color::RESET << " Graphics Pipeline switched to: "
+                          << (m3d ? "3D Quantum Perspective (Z-Buffer + 120Hz Physics)" : "2D Canvas") << "\n";
+            } else if (scfg->category == "world") {
+                current_scene3d.world_name = scfg->str1;
+                current_scene3d.sky_preset = scfg->str2;
+                current_scene3d.world_size = {scfg->x, scfg->y, scfg->z};
+                current_scene3d.fog_density = scfg->val1;
+                current_scene3d.show_grid = scfg->flag;
+                std::cout << color::PURPLE << "[SCENE 3D]" << color::RESET << " World \"" << scfg->str1
+                          << "\" (" << scfg->x << "x" << scfg->y << "x" << scfg->z << "m | Sky: " << scfg->str2
+                          << " | Fog: " << scfg->val1 << ")\n";
+            } else if (scfg->category == "camera") {
+                current_scene3d.cam_mode = scfg->str1;
+                current_scene3d.cam_pos = {scfg->x, scfg->y, scfg->z};
+                current_scene3d.cam_target = {scfg->tx, scfg->ty, scfg->tz};
+                current_scene3d.cam_fov = scfg->val1;
+                current_scene3d.cam_smooth = scfg->val2;
+                std::cout << color::CYAN << "[CAMERA 3D]" << color::RESET << " Mode: " << scfg->str1
+                          << " | Pos: (" << scfg->x << ", " << scfg->y << ", " << scfg->z << ") | FOV: " << scfg->val1 << "°\n";
+            } else if (scfg->category == "dir_light") {
+                current_scene3d.dir_light = {scfg->x, scfg->y, scfg->z};
+                current_scene3d.dir_color = scfg->str1;
+                current_scene3d.dir_intensity = scfg->val1;
+                std::cout << color::YELLOW << "[LIGHT 3D]" << color::RESET << " Directional Sun ("
+                          << scfg->x << ", " << scfg->y << ", " << scfg->z << ") [Intensity: " << scfg->val1 << "]\n";
+            } else if (scfg->category == "point_light") {
+                current_scene3d.point_lights.push_back({{scfg->x, scfg->y, scfg->z}, scfg->str1, scfg->val1, scfg->val2});
+                std::cout << color::YELLOW << "[LIGHT 3D]" << color::RESET << " Point Emitter at ("
+                          << scfg->x << ", " << scfg->y << ", " << scfg->z << ") [" << scfg->str1 << " | Range: " << scfg->val2 << "m]\n";
+            } else if (scfg->category == "ambient_light") {
+                current_scene3d.ambient_color = scfg->str1;
+                current_scene3d.ambient_intensity = scfg->val1;
+                std::cout << color::YELLOW << "[LIGHT 3D]" << color::RESET << " Ambient Hemisphere ["
+                          << scfg->str1 << " | Intensity: " << scfg->val1 << "]\n";
+            } else if (scfg->category == "physics") {
+                current_scene3d.gravity = scfg->val1;
+                current_scene3d.substeps = std::max(1, static_cast<int>(scfg->val2));
+                current_scene3d.friction = scfg->val3;
+                current_scene3d.bounce = scfg->val4;
+                std::cout << color::CYAN << "[PHYSICS 3D]" << color::RESET << " Gravity: " << scfg->val1
+                          << " m/s² | Sub-steps: " << current_scene3d.substeps << " (" << (current_scene3d.substeps * 60)
+                          << "Hz) | Friction: " << scfg->val3 << "\n";
+            }
+            return;
+        }
+
+        if (auto sp3 = std::dynamic_pointer_cast<SpawnEntity3DStmt>(stmt)) {
+            current_scene3d.active = true;
+            loop_math::Entity3D e;
+            e.type = sp3->entity_type;
+            e.name = sp3->name;
+            e.mesh = sp3->mesh;
+            e.pos = {sp3->x, sp3->y, sp3->z};
+            e.size = {sp3->sx, sp3->sy, sp3->sz};
+            e.rot_deg = {sp3->rx, sp3->ry, sp3->rz};
+            e.radius = sp3->radius;
+            e.axis = sp3->axis;
+            e.min_pos = sp3->min_pos;
+            e.max_pos = sp3->max_pos;
+            e.speed = sp3->speed;
+            e.power = sp3->power;
+            e.health = sp3->health;
+            e.damage = sp3->damage;
+            e.points = sp3->points;
+            e.metallic = sp3->metallic;
+            e.fire_rate = sp3->fire_rate;
+            e.color = sp3->color;
+            e.label = sp3->label;
+            current_scene3d.entities.push_back(e);
+            current_window.add_entity_3d(e);
+
+            std::cout << color::PURPLE << "[ENTITY 3D]" << color::RESET << " Spawned " << e.type
+                      << " \"" << e.name << "\" at (" << e.pos.x << ", " << e.pos.y << ", " << e.pos.z
+                      << ") [" << e.color << "]\n";
             return;
         }
 
@@ -3540,6 +4518,18 @@ public:
             } else if (gcfg->config_key == "camera") {
                 std::cout << color::CYAN << "[CAMERA]" << color::RESET << " Follow: " 
                           << gcfg->str_val << " (smooth: " << gcfg->val1 << ")\n";
+            } else if (gcfg->config_key == "camera3d") {
+                std::cout << color::PURPLE << color::BOLD << "[3D CAMERA]" << color::RESET << " Perspective FOV: "
+                          << gcfg->val1 << " | Dist: " << gcfg->val2 << " | Pitch: " << gcfg->val3 << "° | Mode: " << gcfg->str_val << "\n";
+            } else if (gcfg->config_key == "stage_preset") {
+                std::cout << color::GREEN << "[STAGE PRESET]" << color::RESET << " Registered \""
+                          << gcfg->str_val2 << "\" -> Warp (" << gcfg->val1 << ", " << gcfg->val2 << ") [" << gcfg->str_val3 << "]\n";
+            } else if (gcfg->config_key == "algebra_table") {
+                std::cout << color::CYAN << "[HUD TABLE]" << color::RESET << " Interactive Physics Table: \""
+                          << gcfg->str_val << "\" [Formula: " << gcfg->str_val2 << " | Threshold: " << gcfg->val1 << "]\n";
+            } else if (gcfg->config_key == "algebra_row") {
+                std::cout << color::BLUE << "  • [ROW]" << color::RESET << " " << gcfg->str_val
+                          << " (m=" << gcfg->val1 << ", v=" << gcfg->val2 << ", h=" << gcfg->val3 << ", hits=" << gcfg->val4 << ")\n";
             } else if (gcfg->config_key == "scenario" || gcfg->config_key == "background") {
                 std::cout << color::PURPLE << "[SCENARIO]" << color::RESET << " Loaded Stage Environment: \"" 
                           << gcfg->str_val << "\" [Weather/FX: " << gcfg->str_val2 << " | Accent: " << gcfg->str_val3 << "]\n";

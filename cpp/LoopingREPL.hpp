@@ -11,7 +11,7 @@ class REPL {
 public:
     static void run(Interpreter& vm) {
         vm.print_banner();
-        std::cout << color::BOLD << color::CYAN << "✨ Welcome to Looping Interactive C++ Shell (v" << vm.app_version << ")" << color::RESET << "\n";
+        std::cout << color::BOLD << color::CYAN << "✨ Welcome to " << vm.channel_name << " Interactive C++ Shell (v" << vm.engine_version << " • Arch " << vm.arch_version << ")" << color::RESET << "\n";
         std::cout << "Type 'help' for syntax guide, 'vars' for memory, 'funcs' for functions, 'bench' for speed test, 'reset' to clear state, 'exit' to quit.\n\n";
 
         std::string line;
@@ -168,6 +168,9 @@ public:
                 trimmed.rfind("use ", 0) == 0 || trimmed.rfind("call ", 0) == 0 ||
                 trimmed.rfind("ui.", 0) == 0 || trimmed.rfind("@ui", 0) == 0 ||
                 trimmed.rfind("spawn.", 0) == 0 || trimmed.rfind("@spawn", 0) == 0 ||
+                trimmed.rfind("spawn3d.", 0) == 0 || trimmed.rfind("scene3d.world(", 0) == 0 ||
+                trimmed.rfind("camera3d.set(", 0) == 0 || trimmed.rfind("light3d.", 0) == 0 ||
+                trimmed.rfind("physics3d.config(", 0) == 0 || trimmed.rfind("game.mode(", 0) == 0 ||
                 trimmed.rfind("audio.", 0) == 0 || trimmed.rfind("@audio", 0) == 0 ||
                 trimmed.rfind("fx.", 0) == 0 || trimmed.rfind("@fx", 0) == 0 ||
                 trimmed.rfind("return", 0) == 0 || trimmed == "break"
@@ -189,7 +192,8 @@ public:
 
     static void print_help() {
         std::cout << "\n" << color::BOLD << color::PURPLE << "═══════════════════════════════════════════════════════════════" << color::RESET << "\n";
-        std::cout << color::BOLD << "📖 Looping Language Quick Syntax Reference (v1.0.0 Commercial / Arch 2.8A)" << color::RESET << "\n";
+        std::cout << color::BOLD << "📖 Looping Language Quick Syntax Reference (v1.1 / Arch 3.0A)" << color::RESET << "\n";
+        std::cout << color::CYAN << "   Channels: Looping (Prod) • Omega Looping (RC) • Alpha! Looping (Super Experimental)" << color::RESET << "\n";
         std::cout << color::BOLD << color::PURPLE << "═══════════════════════════════════════════════════════════════" << color::RESET << "\n";
         std::cout << "  " << color::CYAN << "let x = 10 / mut hp = 100" << color::RESET << "  Declarations (also: val max = 50, count := 0)\n";
         std::cout << "  " << color::CYAN << "let [a, b] = [10, 20]" << color::RESET << "       Destructuring lists & 2D tuples\n";
@@ -200,7 +204,9 @@ public:
         std::cout << "  " << color::CYAN << "match x { 90..=100 => ... }" << color::RESET << "   Pattern matching (multi-pattern '|' & ranges)\n";
         std::cout << "  " << color::CYAN << "try { ... } catch (err)" << color::RESET << "       Structured exception handling & throw / assert\n";
         std::cout << "  " << color::CYAN << "expr |> func / s.upper()" << color::RESET << "      Pipeline operator & method-style variable calls\n";
-        std::cout << "  " << color::CYAN << "math.*, crypto.*, csv.*" << color::RESET << "       Vectors, stats, SHA-256, CRC32, CSMS E2EE, CSV, JSON\n";
+        std::cout << "  " << color::CYAN << "csid.*, csms.*, game.*" << color::RESET << "        Integrated CS ID (PKCE), CSMS E2EE, Game Plus 2D/3D\n";
+        std::cout << "  " << color::CYAN << "math3d.*, physics3d.*, spawn3d.*" << color::RESET << " 3D Quaternions, Mat4, Raycast, 120Hz Physics & Z-Buffer\n";
+        std::cout << "  " << color::CYAN << "utils.*, sound.*, ai.*" << color::RESET << "        Core Utils, Synthesizer tones, AI inference, Math\n";
         std::cout << "  " << color::CYAN << "ui.card(...) / window.*" << color::RESET << "       Glassmorphism UI & native OS desktop windows\n";
         std::cout << "\n  " << color::YELLOW << "Special REPL Commands:" << color::RESET << " vars, funcs, bench, reset, clear, help, exit\n";
         std::cout << color::BOLD << color::PURPLE << "═══════════════════════════════════════════════════════════════" << color::RESET << "\n\n";

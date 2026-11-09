@@ -1,5 +1,6 @@
 # 🌟 smiledev — The Official Looping Universal Package Manager
-> **Looping Commercial Production Edition v1.0.0 (Architecture 2.8A)** • *Coki Studios & Holo Entertainment © 2026*  
+> **Looping v1.1 Production Release (Architecture 3.0A)** • *Coki Studios & Holo Entertainment © 2026*  
+> *Release Channels: **Looping** (Prod) • **Omega Looping** (RC) • **Alpha! Looping** (Super Experimental)*  
 > *Target Ecosystem: Looping Engine • Loop OS • Shine Console • macOS / Linux / POSIX*
 
 ---
@@ -29,7 +30,7 @@ brew tap cokistudios/tap
 # Instalar el motor Looping y el gestor smiledev
 brew install looping smiledev
 
-# Actualizar a la versión más reciente (v2.8.0)
+# Actualizar a la versión más reciente (v1.1 / Arch 3.0A)
 brew update
 brew upgrade smiledev looping
 ```

@@ -191,6 +191,7 @@ class DynamicHTMLWindow extends EventEmitter {
                 // Serve Looping Engine Core JS (`/looping_core.js`)
                 if (url.pathname === '/looping_core.js' || url.pathname === '/LoopingEngine/looping_core.js') {
                     const candidates = [
+                        path.join(__dirname, 'looping_core.js'),
                         path.join(__dirname, '../../web/looping_core.js'),
                         path.join(__dirname, '../../legacy/node/looping_core.js'),
                         path.join(__dirname, '../../LoopingEngine/looping_core.js'),
@@ -777,13 +778,16 @@ class DynamicHTMLWindow extends EventEmitter {
 
                 <div class="controls-hint">
                     <div>
-                        <strong>Controles:</strong> [A / D / ◀ ▶] Mover • [W / Espacio / ▲] Salto / Doble Salto • [Z / J] Disparo Láser • [X / K] Dash
+                        <strong>Controles 2D/3D:</strong> [A/D] Mover • [W/Espacio] Doble Salto • [Z/J] Disparo • [X/K] Dash • [C] Bullet-Time • [V] Capa 3D
                     </div>
                     <div style="color: var(--accent-cyan);">
-                        Gamepad &amp; Pantalla Táctil Activos
+                        2D + 3D Hybrid Engine @ 60 FPS
                     </div>
                 </div>
             </div>
+
+            <!-- Dynamic Declarative Panels from .loop (Stage Presets & Algebra Table) -->
+            <div id="loop-declarative-panels"></div>
         </div>
 
         <!-- Tab 2: Telemetry & Metrics -->
@@ -838,10 +842,152 @@ class DynamicHTMLWindow extends EventEmitter {
         });
         window.gameRuntime = runtime;
 
+        // Render Declarative Stage Presets & Algebra Table declared inside .loop
+        window.renderDeclarativeLoopUI = function() {
+            const container = document.getElementById('loop-declarative-panels');
+            if (!container || !runtime) return;
+            let html = '';
+
+            if (runtime.stagePresets && runtime.stagePresets.length > 0) {
+                const activeTitle = (runtime.scenario && runtime.scenario.name) || 'Campaña Multi-Escenario';
+                const btns = runtime.stagePresets.map((pr, idx) =>
+                    '<button class="ui-btn" style="border-color:' + pr.color + '; color:' + pr.color + ';" onclick="activateLoopPreset(' + idx + ')">' + pr.label + '</button>'
+                ).join('');
+                html += '<div style="background:rgba(15,23,42,0.88); border:1px solid rgba(56,189,248,0.35); border-radius:14px; padding:16px; margin-top:16px;">' +
+                    '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">' +
+                        '<h3 style="color:#38bdf8; font-size:14.5px; margin:0;">🗺️ Selector de Escenarios &amp; Saltos Rápidos (Declarado en .loop)</h3>' +
+                        '<span id="fb-active-stage-badge" style="font-size:11px; font-family:monospace; background:rgba(56,189,248,0.15); color:#38bdf8; padding:4px 10px; border-radius:99px; border:1px solid rgba(56,189,248,0.3);">Escenario Activo: ' + activeTitle + '</span>' +
+                    '</div>' +
+                    '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+                        btns +
+                        '<button class="ui-btn ui-btn-purple" onclick="toggle3DLayer()">🧊 Alternar 3D [V]</button>' +
+                        '<button class="ui-btn ui-btn-yellow" onclick="toggleBulletTime()">⏱️ Bullet-Time [C]</button>' +
+                    '</div>' +
+                '</div>';
+            }
+
+            if (runtime.algebraTable && runtime.algebraTable.rows && runtime.algebraTable.rows.length > 0) {
+                const tbl = runtime.algebraTable;
+                const rowsHtml = tbl.rows.map(r => {
+                    const em = ((0.5 * r.m * r.v * r.v) + (9.8 * r.m * r.h)).toFixed(1);
+                    const isMon = r.hits >= tbl.monsterHits;
+                    const btnStyle = isMon ? 'border-color:#ef4444;color:#f87171;' : '';
+                    const btnTxt = isMon ? '💥 Modo Monstruo' : '⚡ Impulsar';
+                    return '<tr>' +
+                        '<td style="padding:6px; border:1px solid rgba(255,255,255,0.1);">' + r.label + '</td>' +
+                        '<td style="border:1px solid rgba(255,255,255,0.1);"><input type="number" value="' + r.m + '" step="0.5" style="width:65px; background:#060913; color:#fff; border:1px solid #334155; text-align:center;" oninput="fbCalc()"></td>' +
+                        '<td style="border:1px solid rgba(255,255,255,0.1);"><input type="number" value="' + r.v + '" step="0.5" style="width:65px; background:#060913; color:#fff; border:1px solid #334155; text-align:center;" oninput="fbCalc()"></td>' +
+                        '<td style="border:1px solid rgba(255,255,255,0.1);"><input type="number" value="' + r.h + '" step="0.5" style="width:65px; background:#060913; color:#fff; border:1px solid #334155; text-align:center;" oninput="fbCalc()"></td>' +
+                        '<td style="border:1px solid rgba(255,255,255,0.1);"><input type="number" value="' + r.hits + '" step="10" style="width:65px; background:#060913; color:#fff; border:1px solid #334155; text-align:center;" oninput="fbCalc()"></td>' +
+                        '<td class="fb-res" style="color:' + (isMon ? '#ef4444' : '#4ade80') + '; font-weight:bold; border:1px solid rgba(255,255,255,0.1);">' + em + ' J</td>' +
+                        '<td style="padding:6px; border:1px solid rgba(255,255,255,0.1);"><button class="ui-btn" style="padding:4px 10px; font-size:11px; ' + btnStyle + '" onclick="fbTest(this, ' + tbl.monsterHits + ')">' + btnTxt + '</button></td>' +
+                    '</tr>';
+                }).join('');
+
+                html += '<div style="background:rgba(15,23,42,0.88); border:1px solid rgba(192,132,252,0.35); border-radius:14px; padding:16px; margin-top:16px;">' +
+                    '<div style="background:#060913; border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:12px; margin-bottom:14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">' +
+                        '<span style="font-size:12px; color:#94a3b8;">ENERGÍA MECÁNICA ($E_m$): <strong id="fb-force-val" style="color:#38bdf8; font-size:16px; font-family:monospace;">49.4 J</strong></span>' +
+                        '<div style="flex:1; height:12px; background:#1e293b; border-radius:99px; overflow:hidden; min-width:160px;">' +
+                            '<div id="fb-force-bar" style="width:20%; height:100%; background:#38bdf8; transition:0.2s;"></div>' +
+                        '</div>' +
+                        '<span id="fb-state-txt" style="font-size:12px; font-family:monospace; color:#4ade80;">🛡️ Robot Servicial (0/' + tbl.monsterHits + ' Golpes)</span>' +
+                    '</div>' +
+                    '<h4 style="color:#c084fc; font-size:13.5px; margin-bottom:8px;">' + tbl.title + ' (' + tbl.formula + ')</h4>' +
+                    '<table style="width:100%; border-collapse:collapse; font-size:12px; font-family:monospace; text-align:center;">' +
+                        '<thead>' +
+                            '<tr style="background:rgba(56,189,248,0.12); color:#38bdf8;">' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Escenario / Fase</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Masa m (kg)</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Velocidad v (m/s)</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Altura h (m)</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Golpes</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Energía (Em)</th>' +
+                                '<th style="padding:8px; border:1px solid rgba(255,255,255,0.1);">Acción en Motor</th>' +
+                            '</tr>' +
+                        '</thead>' +
+                        '<tbody id="fb-tbody">' + rowsHtml + '</tbody>' +
+                    '</table>' +
+                '</div>';
+            }
+            container.innerHTML = html;
+        };
+
+        window.activateLoopPreset = function(idx) {
+            if (!runtime || !runtime.stagePresets[idx]) return;
+            const pr = runtime.stagePresets[idx];
+            const p = runtime.getPlayer();
+            if (p) {
+                p.x = pr.x; p.y = pr.y; p.vx = 0; p.vy = -120;
+                p.spawnX = pr.x; p.spawnY = pr.y;
+                p.overdrive = Boolean(pr.overdrive);
+            }
+            if (pr.weather) runtime.scenario.weather = pr.weather;
+            if (pr.gravity) runtime.gravity = pr.gravity;
+            runtime.scenario.name = pr.label;
+            const badge = document.getElementById('fb-active-stage-badge');
+            if (badge) badge.textContent = 'Escenario Activo: ' + pr.label;
+            runtime.playSfx('pad');
+            if (p) {
+                runtime.addPopup(p.x, p.y - 16, '🗺️ ' + pr.label, pr.color || '#38bdf8');
+                runtime.spawnParticleBurst(p.x + 16, p.y + 20, pr.color || '#38bdf8', 26);
+            }
+        };
+
+        window.toggle3DLayer = function() {
+            if (!runtime || !runtime.camera3D) return;
+            runtime.camera3D.enabled = !runtime.camera3D.enabled;
+            runtime.addPopup(runtime.camera.x + 340, 80, runtime.camera3D.enabled ? '🧊 CAPA 3D ACTIVA' : '🧊 CAPA 3D OCULTA', '#c084fc');
+        };
+
+        window.toggleBulletTime = function() {
+            if (!runtime) return;
+            runtime.timeScale = runtime.timeScale < 0.8 ? 1.0 : 0.42;
+            runtime.addPopup(runtime.camera.x + 340, 80, runtime.timeScale < 0.8 ? '⏱️ BULLET-TIME 0.4x' : '⏱️ VELOCIDAD 1.0x', '#00f5d4');
+        };
+
+        window.fbCalc = function() {
+            document.querySelectorAll('#fb-tbody tr').forEach(tr => {
+                const ins = tr.querySelectorAll('input');
+                const m = parseFloat(ins[0].value)||0, v = parseFloat(ins[1].value)||0, h = parseFloat(ins[2].value)||0;
+                const em = (0.5 * m * v * v) + (9.8 * m * h);
+                tr.querySelector('.fb-res').textContent = em.toFixed(1) + ' J';
+            });
+        };
+
+        window.fbTest = function(btn, threshold = 760) {
+            const ins = btn.closest('tr').querySelectorAll('input');
+            const m = parseFloat(ins[0].value)||1, v = parseFloat(ins[1].value)||0, h = parseFloat(ins[2].value)||0, hits = parseInt(ins[3].value)||0;
+            const em = (0.5 * m * v * v) + (9.8 * m * h);
+            const fVal = document.getElementById('fb-force-val');
+            if (fVal) fVal.textContent = em.toFixed(1) + ' J';
+            const bar = document.getElementById('fb-force-bar');
+            if (bar) {
+                bar.style.width = Math.min(100, Math.max(8, (em / 1300) * 100)) + '%';
+                bar.style.background = hits >= threshold ? '#ef4444' : '#38bdf8';
+            }
+            const st = document.getElementById('fb-state-txt');
+            if (st) {
+                st.textContent = hits >= threshold ? ('🔥 MODO MONSTRUO ACTIVO (' + hits + '+ Golpes)') : ('🛡️ Robot Servicial (' + hits + '/' + threshold + ' Golpes)');
+                st.style.color = hits >= threshold ? '#ef4444' : '#4ade80';
+            }
+            if (runtime && runtime.getPlayer) {
+                const p = runtime.getPlayer();
+                if (p) {
+                    p.overdrive = (hits >= threshold);
+                    p.vy = -Math.min(760, 260 + h * 60 + v * 15);
+                    p.vx = p.facing * Math.min(460, 120 + v * 20);
+                    runtime.playSfx(hits >= threshold ? 'stomp' : 'pad');
+                    runtime.addPopup(p.x, p.y - 15, (hits >= threshold ? '🔥 MONSTRUO: ' : 'Em: ') + em.toFixed(1) + ' J', hits >= threshold ? '#ef4444' : '#38bdf8');
+                    runtime.spawnParticleBurst(p.x + p.w / 2, p.y + p.h / 2, hits >= threshold ? '#ef4444' : '#38bdf8', 26);
+                }
+            }
+        };
+
         // Load initial game script from Looping
         const initialScript = ${escapedScript};
         if (initialScript) {
             runtime.execute(initialScript);
+            window.renderDeclarativeLoopUI();
         }
 
         function addLocalLog(msg) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "LoopingValue.hpp"
+#include "Looping3D.hpp"
 #include "LoopingAST.hpp"
 #include "LoopingParser.hpp"
 #include <string>
@@ -158,6 +159,12 @@ public:
     double window_width = 800;
     double window_height = 520;
 
+    struct SnippetItem {
+        std::string name;
+        std::string code;
+        std::string type = "looping";
+    };
+
     std::vector<std::pair<std::string, std::string>> imports;
     std::vector<std::string> python_modules;
     std::vector<std::string> declarations;
@@ -165,6 +172,7 @@ public:
     std::vector<std::string> ui_buttons;
     std::vector<std::string> ui_inputs;
     std::vector<std::string> custom_functions;
+    std::vector<SnippetItem> snippets;
     std::vector<std::string> body_statements;
 
     DynamicProgram(const std::string& name = "DynamicApp", 
@@ -220,6 +228,11 @@ public:
         return *this;
     }
 
+    DynamicProgram& add_snippet(const std::string& name, const std::string& code, const std::string& type = "looping") {
+        snippets.push_back({name, code, type});
+        return *this;
+    }
+
     DynamicProgram& add_card(double x, double y, double w, double h, const std::string& title, const std::string& text) {
         std::ostringstream ss;
         ss << "    draw card at (" << x << ", " << y << ") with size (" << w << ", " << h << ") and title \"" 
@@ -228,10 +241,20 @@ public:
         return *this;
     }
 
-    DynamicProgram& add_button(double x, double y, const std::string& text, const std::string& action) {
+    DynamicProgram& add_button(double x, double y, const std::string& text, const std::string& action, const std::string& snippet = "") {
         std::ostringstream ss;
-        ss << "    draw button at (" << x << ", " << y << ") with text \"" << escape_str(text) 
-           << "\" and action \"" << escape_str(action) << "\"";
+        if (!snippet.empty()) {
+            ss << "    draw button at (" << x << ", " << y << ") with text \"" << escape_str(text) 
+               << "\" and action \"" << escape_str(action) << "\" with snippet:\n";
+            std::stringstream snip_ss(snippet);
+            std::string line;
+            while (std::getline(snip_ss, line)) {
+                ss << "        " << line << "\n";
+            }
+        } else {
+            ss << "    draw button at (" << x << ", " << y << ") with text \"" << escape_str(text) 
+               << "\" and action \"" << escape_str(action) << "\"";
+        }
         ui_buttons.push_back(ss.str());
         return *this;
     }
@@ -297,6 +320,21 @@ public:
         // Functions
         for (const auto& fn : custom_functions) {
             out << fn << "\n";
+        }
+
+        // Snippets (Arch 3.0A Embedded Reactive Snippets)
+        for (const auto& snip : snippets) {
+            if (snip.type == "python") {
+                out << "insert pysnippet as " << snip.name << ":\n";
+            } else {
+                out << "insert snippet as " << snip.name << ":\n";
+            }
+            std::stringstream ss(snip.code);
+            std::string line;
+            while (std::getline(ss, line)) {
+                out << "    " << line << "\n";
+            }
+            out << "\n";
         }
 
         // App Block
@@ -447,6 +485,14 @@ public:
     std::vector<ToolbarItem> toolbar_items;
     std::vector<ToneItem> tones;
     std::vector<std::string> custom_statements;
+    bool is_3d_mode = false;
+    std::vector<loop_math::Entity3D> entities_3d;
+
+    DynamicWindow& add_entity_3d(const loop_math::Entity3D& e) {
+        is_3d_mode = true;
+        entities_3d.push_back(e);
+        return *this;
+    }
 
     DynamicWindow(const std::string& win_title = "Looping Dynamic Window",
                   double w = 850, double h = 540,
@@ -1273,6 +1319,96 @@ public:
         py << "        main_frame = tk.Frame(self, bg=THEME['bg'], padx=14, pady=10)\n";
         py << "        main_frame.pack(fill='both', expand=True)\n\n";
 
+        if (is_3d_mode || !entities_3d.empty()) {
+            py << "        import math\n";
+            py << "        self.entities_3d = [\n";
+            for (const auto& e : entities_3d) {
+                py << "            {'type': \"" << escape_py(e.type) << "\", 'name': \"" << escape_py(e.name)
+                   << "\", 'x': " << e.pos.x << ", 'y': " << e.pos.y << ", 'z': " << e.pos.z
+                   << ", 'sx': " << e.size.x << ", 'sy': " << e.size.y << ", 'sz': " << e.size.z
+                   << ", 'r': " << e.radius << ", 'color': \"" << escape_py(e.color)
+                   << "\", 'speed': " << e.speed << ", 'axis': \"" << escape_py(e.axis)
+                   << "\", 'min_p': " << e.min_pos << ", 'max_p': " << e.max_pos
+                   << ", 'dir': 1.0, 'collected': False, 'alive': True, 'rot': " << e.rot_deg.y << "},\n";
+            }
+            py << "        ]\n";
+            py << "        self.c_3d = tk.Canvas(main_frame, height=310, bg='#050811', highlightthickness=1, highlightbackground=THEME['primary'])\n";
+            py << "        self.c_3d.pack(fill='both', expand=True, pady=(0, 10))\n";
+            py << "        self.keys_3d = set()\n";
+            py << "        self.cam_yaw = 0.0\n";
+            py << "        self.cam_pitch = 0.28\n";
+            py << "        self.p_vel = [0.0, 0.0, 0.0]\n";
+            py << "        self.p_jumps = 0\n";
+            py << "        self.score_3d = 0\n";
+            py << "        self.bind_all('<KeyPress>', lambda e: self.keys_3d.add(e.keysym.lower()))\n";
+            py << "        self.bind_all('<KeyRelease>', lambda e: self.keys_3d.discard(e.keysym.lower()))\n";
+            py << "        def _proj3d(px, py, pz, eye, yaw, pitch, w, h):\n";
+            py << "            dx, dy, dz = px - eye[0], py - eye[1], pz - eye[2]\n";
+            py << "            cy, sy = math.cos(-yaw), math.sin(-yaw)\n";
+            py << "            rx = dx * cy + dz * sy\n";
+            py << "            rz = -dx * sy + dz * cy\n";
+            py << "            cp, sp = math.cos(-pitch), math.sin(-pitch)\n";
+            py << "            ry = dy * cp - rz * sp\n";
+            py << "            vz = dy * sp + rz * cp\n";
+            py << "            if vz <= 0.4: return None\n";
+            py << "            f = (h * 0.92) / vz\n";
+            py << "            return (w * 0.5 + rx * f, h * 0.5 - ry * f, vz)\n";
+            py << "        def _tick3d():\n";
+            py << "            dt = 0.016\n";
+            py << "            if 'q' in self.keys_3d: self.cam_yaw -= 1.8 * dt\n";
+            py << "            if 'e' in self.keys_3d: self.cam_yaw += 1.8 * dt\n";
+            py << "            player = next((o for o in self.entities_3d if o['type'] == 'player'), None)\n";
+            py << "            if player:\n";
+            py << "                spd = player['speed'] * (1.75 if 'shift_l' in self.keys_3d or 'x' in self.keys_3d else 1.0)\n";
+            py << "                fx, fz = math.sin(self.cam_yaw), math.cos(self.cam_yaw)\n";
+            py << "                rx, rz = math.cos(self.cam_yaw), -math.sin(self.cam_yaw)\n";
+            py << "                mx = ('d' in self.keys_3d or 'right' in self.keys_3d) - ('a' in self.keys_3d or 'left' in self.keys_3d)\n";
+            py << "                mz = ('w' in self.keys_3d or 'up' in self.keys_3d) - ('s' in self.keys_3d or 'down' in self.keys_3d)\n";
+            py << "                self.p_vel[0] = (fx * mz + rx * mx) * spd\n";
+            py << "                self.p_vel[2] = (fz * mz + rz * mx) * spd\n";
+            py << "                if ('space' in self.keys_3d) and self.p_jumps < 2:\n";
+            py << "                    self.p_vel[1] = 15.0; self.p_jumps += 1; self.keys_3d.discard('space')\n";
+            py << "                for _ in range(4):\n";
+            py << "                    sdt = dt * 0.25\n";
+            py << "                    self.p_vel[1] -= 26.0 * sdt\n";
+            py << "                    player['x'] += self.p_vel[0] * sdt\n";
+            py << "                    player['y'] += self.p_vel[1] * sdt\n";
+            py << "                    player['z'] += self.p_vel[2] * sdt\n";
+            py << "                    if player['y'] <= 0.6:\n";
+            py << "                        player['y'] = 0.6; self.p_vel[1] = 0.0; self.p_jumps = 0\n";
+            py << "            for o in self.entities_3d:\n";
+            py << "                o['rot'] = (o['rot'] + 90.0 * dt) % 360.0\n";
+            py << "                if o['type'] in ('moving_platform', 'enemy', 'boss') and o['alive']:\n";
+            py << "                    ax = o['axis'] if o['axis'] in ('x','y','z') else 'x'\n";
+            py << "                    o[ax] += o['dir'] * o['speed'] * dt\n";
+            py << "                    if o[ax] >= o['max_p']: o[ax] = o['max_p']; o['dir'] = -1.0\n";
+            py << "                    if o[ax] <= o['min_p']: o[ax] = o['min_p']; o['dir'] = 1.0\n";
+            py << "                if player and o['type'] in ('crystal', 'ring') and not o['collected']:\n";
+            py << "                    if (player['x']-o['x'])**2 + (player['y']-o['y'])**2 + (player['z']-o['z'])**2 < (o['r']+1.4)**2:\n";
+            py << "                        o['collected'] = True; self.score_3d += 150\n";
+            py << "            w = max(320, self.c_3d.winfo_width())\n";
+            py << "            h = max(200, self.c_3d.winfo_height())\n";
+            py << "            self.c_3d.delete('all')\n";
+            py << "            px, py_p, pz = (player['x'], player['y'], player['z']) if player else (0.0, 2.0, 0.0)\n";
+            py << "            eye = [px - math.sin(self.cam_yaw)*15.0, py_p + 6.5, pz - math.cos(self.cam_yaw)*15.0]\n";
+            py << "            for gz in range(-20, 90, 8):\n";
+            py << "                a = _proj3d(-40, 0, gz, eye, self.cam_yaw, self.cam_pitch, w, h)\n";
+            py << "                b = _proj3d( 40, 0, gz, eye, self.cam_yaw, self.cam_pitch, w, h)\n";
+            py << "                if a and b: self.c_3d.create_line(a[0], a[1], b[0], b[1], fill='#123154')\n";
+            py << "            draw_list = []\n";
+            py << "            for o in self.entities_3d:\n";
+            py << "                if o.get('collected') or not o.get('alive', True) or o['type'] == 'terrain': continue\n";
+            py << "                pt = _proj3d(o['x'], o['y'], o['z'], eye, self.cam_yaw, self.cam_pitch, w, h)\n";
+            py << "                if pt: draw_list.append((pt[2], o, pt))\n";
+            py << "            draw_list.sort(key=lambda it: -it[0])\n";
+            py << "            for vz, o, pt in draw_list:\n";
+            py << "                rad = max(4, (max(o['sx'], o['sy']) * h * 0.45) / vz)\n";
+            py << "                self.c_3d.create_oval(pt[0]-rad, pt[1]-rad*0.7, pt[0]+rad, pt[1]+rad*0.7, fill=o['color'], outline='#ffffff')\n";
+            py << "            self.c_3d.create_text(14, 18, anchor='w', fill='#38bdf8', font=('Courier', 10, 'bold'), text=f'SHINE LOOP 3D NATIVE • SCORE: {self.score_3d} • [WASD] Move [SPACE] Jump [Q/E] Orbit')\n";
+            py << "            self.after(16, _tick3d)\n";
+            py << "        self.after(40, _tick3d)\n\n";
+        }
+
         if (!cards.empty()) {
             py << "        cards_data = [\n";
             for (const auto& c : cards) {
@@ -2017,7 +2153,7 @@ public:
         out << "# Hardware Refresh: " << specs.pipeline << " (" << specs.target_fps << " FPS)\n";
         out << "# Layout Mode: " << specs.layout_mode << "\n";
         out << "# Shader Palette: " << specs.theme << " (" << specs.primary_color << ")\n";
-        out << "# Dynamic Looping Engine v2.5.0 (Coki Studios / Holo Entertainment)\n";
+        out << "# Dynamic Looping Engine v1.1 (Arch 3.0A Quantum Synthesis & Coki Studios Ecosystem)\n";
         out << "# ═══════════════════════════════════════════════════════════════\n\n";
         out << "compile target \"" << specs.code << "\"\n";
         out << "set ui_profile to \"" << specs.code << "\"\n";
@@ -2173,45 +2309,283 @@ public:
         return DynamicProgram(name, target, ver);
     }
 
-    // Factory: Creates pre-configured template programs
+    // Factory: Creates pre-configured template programs with Arch 3.0A CS modules & snippets
     static DynamicProgram create_template(const std::string& type, const std::string& name, const std::string& target = "shine_ui") {
-        DynamicProgram prog(name, target, "1.0");
+        DynamicProgram prog(name, target, "1.1");
 
-        if (type == "window" || type == "win" || type == "gui") {
+        if (type == "arcade" || type == "game" || type == "platformer") {
+            UIProfileSpecs specs = resolve_ui_profile(target);
+            prog.set_window(name + " 2D Game", 800, 600)
+                .set_theme(specs.theme)
+                .add_import("loop.ui", "ui")
+                .add_import("loop.engine", "game")
+                .add_import("csid", "csid")
+                .add_import("game_plus", "game_plus")
+                .add_import("audio", "sound")
+                .add_var("player_x", "100")
+                .add_var("player_y", "350")
+                .add_var("player_vx", "0.0")
+                .add_var("player_vy", "0.0")
+                .add_var("player_score", "0")
+                .add_var("player_lives", "3")
+                .add_var("coins_collected", "0")
+                .add_var("is_jumping", "false")
+                .add_snippet("on_player_jump",
+                    "if (!is_jumping) {\n"
+                    "    player_vy := -12.5;\n"
+                    "    is_jumping := true;\n"
+                    "    game.play_sfx(\"jump\");\n"
+                    "    out(\"[GAME SNIPPET] Player jumped! Impulse vy = -12.5\");\n"
+                    "}")
+                .add_snippet("on_collect_coin",
+                    "val coin_box = [340, 330, 24, 24];\n"
+                    "val player_box = [player_x, player_y, 32, 32];\n"
+                    "val hit = game.collide_box(player_box, coin_box);\n"
+                    "if (hit) {\n"
+                    "    player_score += 150;\n"
+                    "    coins_collected += 1;\n"
+                    "    game.play_sfx(\"coin\");\n"
+                    "    game.spawn_particle(\"sparkle\", 340, 330, 0.0, -2.0, \"#facc15\");\n"
+                    "    out($\"[GAME SNIPPET] Coin collected! Score: {player_score} (Coins: {coins_collected})\");\n"
+                    "} else {\n"
+                    "    player_score += 50;\n"
+                    "    game.play_sfx(\"coin\");\n"
+                    "    out($\"[GAME SNIPPET] Bonus coin! Score: {player_score}\");\n"
+                    "}")
+                .add_snippet("on_laser_fire",
+                    "val laser_x = player_x + 36;\n"
+                    "val laser_y = player_y + 12;\n"
+                    "game.play_sfx(\"laser\");\n"
+                    "game.spawn_particle(\"laser_bolt\", laser_x, laser_y, 14.0, 0.0, \"#38bdf8\");\n"
+                    "out($\"[GAME SNIPPET] Laser beam discharged from ({laser_x}, {laser_y})\");")
+                .add_snippet("on_enemy_hit",
+                    "player_score += 500;\n"
+                    "game.play_sfx(\"hit\");\n"
+                    "game.spawn_particle(\"explosion\", 550, 300, 0.0, 0.0, \"#ef4444\");\n"
+                    "out($\"[GAME SNIPPET] Enemy eliminated! Score: {player_score}\");")
+                .add_snippet("on_game_loop",
+                    "player_vy += 0.85; // Gravity\n"
+                    "player_y += player_vy;\n"
+                    "if (player_y >= 350) {\n"
+                    "    player_y := 350;\n"
+                    "    player_vy := 0.0;\n"
+                    "    is_jumping := false;\n"
+                    "}\n"
+                    "player_x := game.clamp(player_x + player_vx, 20, 760);\n"
+                    "out($\"[PHYSICS 60Hz] Player pos: ({player_x}, {player_y}) | vy: {player_vy}\");")
+                .add_card(20, 20, 760, 85, "🎮 " + name + " (Quantum 2D Arena)", "State-of-the-art 2D Canvas Engine (Arch 3.0A)\nTarget: " + target + " | V-Sync Direct 60/120 FPS")
+                .add_card(20, 115, 370, 160, "⚡ Estado del Héroe", "Vidas: 3 • Puntos: 0 • Monedas: 0\nFísica: Gravedad 0.85G • Salto: Activo")
+                .add_card(410, 115, 370, 160, "👾 Anomalía & Enemigos", "Escenario: VoidStage Neon\nHaz Láser: Activo a 550px\nPortal: GATE-1 Sincronizado")
+                .add_button(35, 290, "SALTO [SPACE]", "on_player_jump")
+                .add_button(220, 290, "DISPARAR LÁSER [F]", "on_laser_fire")
+                .add_button(430, 290, "RECOGER MONEDA", "on_collect_coin")
+                .add_button(610, 290, "FRAME DE FÍSICA", "on_game_loop")
+                .add_code("game.scenario(name: \"VoidStage\", weather: \"void\", accent: \"#38bdf8\")\n"
+                          "spawn.sprite(\"PlayerHero\", at: (100, 350), color: \"#38bdf8\")\n"
+                          "spawn.checkpoint(at: (300, 350), label: \"GATE-1\")\n"
+                          "spawn.laser_hazard(at: (550, 300), size: (14, 100), interval: 1.8)\n"
+                          "game.play_sfx(\"powerup\")\n"
+                          "print \"[GAME ENGINE] Initialized 2D canvas with embedded reactive snippets.\"");
+        } else if (type == "game3d" || type == "3d" || type == "racing3d") {
+            UIProfileSpecs specs = resolve_ui_profile(target);
+            prog.set_window(name + " 3D Quantum Arena", 900, 620)
+                .set_theme(specs.theme)
+                .add_import("loop.ui", "ui")
+                .add_import("loop.engine", "game")
+                .add_import("csid", "csid")
+                .add_import("game_plus", "game_plus")
+                .add_import("audio", "sound")
+                .add_var("pilot_pos", "[0.0, 2.0, 0.0]")
+                .add_var("pilot_vel", "[0.0, 0.0, 0.0]")
+                .add_var("score_3d", "0")
+                .add_var("kers_boost", "100")
+                .add_snippet("on_boost_3d",
+                    "val fwd = math3d.normalize([0.0, 0.15, 1.0]);\n"
+                    "pilot_vel := math3d.scale(fwd, 28.0);\n"
+                    "kers_boost := game.clamp(kers_boost - 20, 0, 100);\n"
+                    "game.play_sfx(\"powerup\");\n"
+                    "out($\"[3D HYPER-DASH] Vector impulso: {pilot_vel} | KERS: {kers_boost}%\");")
+                .add_snippet("on_raycast_scan",
+                    "val hit = physics3d.raycast_sphere([0, 2, 0], [0, 0, 1], [0, 2, 18], 2.5);\n"
+                    "if (hit[\"hit\"]) {\n"
+                    "    score_3d += 250;\n"
+                    "    game.play_sfx(\"laser\");\n"
+                    "    out($\"[3D RAYCAST] Impacto confirmado a {hit.distance}m! Score: {score_3d}\");\n"
+                    "}")
+                .add_card(20, 20, 860, 80, "🕹️ " + name + " (Quantum 3D Engine)", "Motor 3D con Sub-Stepping 120Hz, Z-Buffer y Proyección en Perspectiva\nTarget: " + target + " | Iluminación Blinn-Phong & Sombras Dinámicas")
+                .add_button(35, 120, "HYPER-DASH 3D [SHIFT]", "on_boost_3d")
+                .add_button(260, 120, "ESCANEO RAYCAST 3D [Z]", "on_raycast_scan")
+                .add_code("game.mode(\"3d\")\n"
+                          "scene3d.world(name: \"" + name + "\", size: (180, 80, 180), sky: \"cyber_night\", fog: 0.010, grid: true)\n"
+                          "camera3d.set(mode: \"chase\", pos: (0, 8, -16), target: (0, 2, 10), fov: 64, smooth: 0.14)\n"
+                          "light3d.directional(dir: (-0.4, -1.0, -0.35), color: \"#f8fafc\", intensity: 1.1)\n"
+                          "physics3d.config(gravity: -26.0, substeps: 4, friction: 0.86, bounce: 0.15)\n"
+                          "spawn3d.player(\"" + name + "Pilot\", at: (0, 2, 0), mesh: \"hovercraft\", speed: 24, jump: 16, color: \"#38bdf8\")\n"
+                          "spawn3d.box(at: (0, -0.5, 14), size: (14, 1, 28), color: \"#6366f1\")\n"
+                          "spawn3d.ring(at: (0, 4, 18), radius: 3.2, points: 250, boost: 22, color: \"#00f5d4\")\n"
+                          "spawn3d.crystal(at: (3, 3, 24), points: 150, color: \"#fbbf24\")\n"
+                          "spawn3d.enemy(\"Sentinel3D\", at: (0, 2.5, 32), range: (-8, 8), axis: \"x\", speed: 9, health: 60)\n"
+                          "spawn3d.portal(at: (0, 3.5, 48), radius: 3.8, label: \"QUANTUM GATE\")\n"
+                          "print \"[3D ENGINE] Initialized 3D scene graph with 120Hz physics sub-stepping.\"");
+        } else if (type == "rpg" || type == "adventure") {
+            UIProfileSpecs specs = resolve_ui_profile(target);
+            prog.set_window(name + " RPG Adventure", 840, 580)
+                .set_theme(specs.theme)
+                .add_import("loop.ui", "ui")
+                .add_import("loop.engine", "game")
+                .add_import("core_utils", "utils")
+                .add_import("audio", "sound")
+                .add_var("hero_name", "\"Kael\"")
+                .add_var("hero_hp", "120")
+                .add_var("hero_max_hp", "120")
+                .add_var("hero_mana", "60")
+                .add_var("hero_gold", "250")
+                .add_var("hero_inventory", "[\"Poción Curativa\", \"Cristal de Maná\", \"Daga de Cristal\"]")
+                .add_snippet("on_dialogue_step",
+                    "val dialogues = [\n"
+                    "    \"Guardián CS: Bienvenido al núcleo del Arch 3.0A, valiente aventurero.\",\n"
+                    "    \"Guardián CS: El portal cuántico requiere sincronizar la clave de sala CSMS.\",\n"
+                    "    \"Guardián CS: Toma esta gema y avanza sin vacilar hacia el siguiente nivel.\"\n"
+                    "];\n"
+                    "sound.play_note(\"E4\", 80);\n"
+                    "out($\"[RPG DIALOGUE] {dialogues[0]}\");")
+                .add_snippet("on_combat_attack",
+                    "val base_dmg = math.random(18, 32);\n"
+                    "val is_crit = (math.random(1, 100) <= 25);\n"
+                    "val final_dmg = is_crit ? (base_dmg * 2) : base_dmg;\n"
+                    "if (is_crit) {\n"
+                    "    game.play_sfx(\"powerup\");\n"
+                    "    out($\"[RPG COMBAT] ¡GOLPE CRÍTICO! Infliges {final_dmg} de daño elemental.\");\n"
+                    "} else {\n"
+                    "    game.play_sfx(\"hit\");\n"
+                    "    out($\"[RPG COMBAT] Ataque exitoso: infliges {final_dmg} de daño.\");\n"
+                    "}")
+                .add_snippet("on_use_potion",
+                    "if (contains(hero_inventory, \"Poción Curativa\")) {\n"
+                    "    hero_hp := math.min(hero_max_hp, hero_hp + 45);\n"
+                    "    sound.play_note(\"G4\", 120);\n"
+                    "    out($\"[RPG ITEM] Usaste Poción Curativa. Vida restaurada: {hero_hp}/{hero_max_hp}\");\n"
+                    "} else {\n"
+                    "    out(\"[RPG ITEM] No tienes más pociones curativas en el inventario.\");\n"
+                    "}")
+                .add_card(20, 20, 800, 80, "🗡️ " + name + " (RPG & Quest System)", "Aventura Reactiva • Coki Studios Story Engine (Arch 3.0A)")
+                .add_card(20, 110, 390, 170, "🧙‍♂️ Estado del Héroe", "Nombre: Kael • Nivel: 5 • HP: 120/120\nManá: 60/60 • Oro: 250 • Equipo: Daga de Cristal")
+                .add_card(430, 110, 390, 170, "📜 Misión Principal", "Objetivo: Explorar las Ruinas Cuánticas\nClave CSMS Requerida: S256 Hardware Enclave")
+                .add_button(35, 300, "HABLAR CON NPC", "on_dialogue_step")
+                .add_button(240, 300, "ATACAR ENEMIGO", "on_combat_attack")
+                .add_button(450, 300, "USAR POCIÓN", "on_use_potion")
+                .add_code("sound.play_note(\"C4\", 100)\nsound.play_note(\"G4\", 150)\nprint \"[RPG] Adventure realm loaded successfully.\"");
+        } else if (type == "dashboard" || type == "app" || type == "launcher") {
+            UIProfileSpecs specs = resolve_ui_profile(target);
+            prog.set_window(name + " Dashboard Pro", 860, 560)
+                .set_theme(specs.theme)
+                .add_import("loop.ui", "ui")
+                .add_import("csid", "csid")
+                .add_import("core_utils", "utils")
+                .add_import("csms", "csms")
+                .add_import("json", "json")
+                .add_var("telemetry_status", "\"OPERATIONAL\"")
+                .add_var("active_users", "1420")
+                .add_var("latency_ms", "0.16")
+                .add_var("session_id", "utils.uuid()")
+                .add_snippet("on_csid_login",
+                    "val user = csid.trigger_auth(\"Jerix Ortiz\", \"jerix@cokistudios.com\");\n"
+                    "out($\"[CSID AUTH] Sesión iniciada para: {user.name} ({user.email})\");\n"
+                    "out($\"[CSID CLAIMS] Identidad: {user.provider} | Scope: {user.scope}\");")
+                .add_snippet("on_refresh_telemetry",
+                    "latency_ms := (math.random(12, 28) / 100.0);\n"
+                    "active_users += math.random(-5, 12);\n"
+                    "val ts = datetime.iso();\n"
+                    "out($\"[TELEMETRY REFRESH] Sincronizado a las {ts} | Latencia: {latency_ms} ms | Usuarios: {active_users}\");")
+                .add_snippet("on_csms_encrypt_payload",
+                    "val room = \"room_cs_ops_99\";\n"
+                    "val raw_data = $\"status={telemetry_status};latency={latency_ms};users={active_users}\";\n"
+                    "val encrypted = csms.encrypt(room, raw_data);\n"
+                    "out($\"[CSMS E2EE] Payload cifrado para sala '{room}':\");\n"
+                    "out($\"  {encrypted}\");")
+                .add_snippet("on_export_json_report",
+                    "val report = {\n"
+                    "    \"app\": \"" + name + "\",\n"
+                    "    \"session_id\": session_id,\n"
+                    "    \"status\": telemetry_status,\n"
+                    "    \"active_users\": active_users,\n"
+                    "    \"latency_ms\": latency_ms,\n"
+                    "    \"timestamp\": datetime.iso()\n"
+                    "};\n"
+                    "val json_out = json.stringify(report);\n"
+                    "out(\"[DATA EXPORT] Reporte JSON generado exitosamente:\");\n"
+                    "out(json_out);")
+                .add_card(20, 20, 820, 75, "🌟 " + name + " (Coki Studios Enterprise Dashboard)", "Arch 3.0A Quantum Synthesis • Target: " + target + " • V-Sync 60/120/240Hz Direct")
+                .add_card(20, 105, 395, 175, "🔐 CS ID Connect Identity", "Estado: Single Sign-On PKCE S256\nEndpoint: cokistudios.com/authorize\nHardware Enclave: Activo (SEP/T2)")
+                .add_card(445, 105, 395, 175, "🔒 CSMS Mensajería E2EE", "Cifrado: Hardware-Backed SEP / T2 / StrongBox\nCanal: SHA-256 KDF con Salt Canónico\nFormato: enc:v1:<iv>:<ciphertext>")
+                .add_button(35, 300, "CONECTAR CS ID", "on_csid_login")
+                .add_button(235, 300, "REFRESCAR TELEMETRÍA", "on_refresh_telemetry")
+                .add_button(450, 300, "CIFRAR PAYLOAD CSMS", "on_csms_encrypt_payload")
+                .add_button(665, 300, "EXPORTAR JSON", "on_export_json_report")
+                .add_code("play tone at 587 Hz for 80 ms\nplay tone at 880 Hz for 120 ms\nprint \"[DASHBOARD] Enterprise telemetry initialized with default CS modules.\"");
+        } else if (type == "tool" || type == "counter" || type == "cli") {
+            UIProfileSpecs specs = resolve_ui_profile(target);
+            prog.set_window(name + " Tool", 640, 440)
+                .set_theme(specs.theme)
+                .add_import("loop.ui", "ui")
+                .add_import("core_utils", "utils")
+                .add_import("csms", "csms")
+                .add_import("json", "json")
+                .add_var("counter", "0")
+                .add_var("raw_payload", "\"CS_QUANTUM_DATA_PACKET\"")
+                .add_snippet("on_process_data",
+                    "counter += 1;\n"
+                    "val hash = crypto.sha256($\"task_{counter}\");\n"
+                    "out($\"[TOOL SNIPPET] Tarea #{counter} procesada. Hash: {hash}\");")
+                .add_snippet("on_format_utility",
+                    "val sample_bytes = 10485760;\n"
+                    "val formatted = utils.format_bytes(sample_bytes);\n"
+                    "val slug = utils.slugify(\"Coki Studios Looping Engine 1.1\");\n"
+                    "out($\"[TOOL SNIPPET] Format: {formatted} | Slug: {slug}\");")
+                .add_snippet("on_secure_encrypt",
+                    "val enc = csms.encrypt(\"tool_sandbox\", raw_payload);\n"
+                    "out($\"[TOOL SNIPPET] Encrypted payload: {enc}\");")
+                .add_card(20, 20, 600, 80, "⚡ " + name + " (Productivity Tool)", "Universal Task & Data Transformer (Arch 3.0A)")
+                .add_card(20, 110, 600, 150, "📦 Panel de Operaciones", "Contador Activo: Tareas bajo demanda\nAlgoritmos: SHA-256, CSMS KDF, Formato Kebab")
+                .add_button(35, 280, "PROCESAR TAREA", "on_process_data")
+                .add_button(235, 280, "UTILIDADES DE FORMATO", "on_format_utility")
+                .add_button(450, 280, "CIFRADO SEGURO", "on_secure_encrypt")
+                .add_code("print \"[TOOL] Utility initialized and ready.\"");
+        } else if (type == "swiftui" || type == "apple") {
+            prog.set_window(name + " SwiftUI", 700, 500)
+                .set_target("swiftui")
+                .add_code(
+                    "component " + name + "View {\n"
+                    "    @state count = 0\n"
+                    "    @state is_active = true\n"
+                    "    VStack {\n"
+                    "        Text(\"🍎 " + name + " (SwiftUI)\")\n"
+                    "            .font(.title)\n"
+                    "            .foregroundColor(.primary)\n"
+                    "        Text(\"Contador reactivo: $count\")\n"
+                    "            .foregroundColor(.secondary)\n"
+                    "        HStack {\n"
+                    "            Button(\"Incrementar\")\n"
+                    "            Button(\"Resetear\")\n"
+                    "        }\n"
+                    "        Toggle(\"Servicio Activo\", isOn: $is_active)\n"
+                    "    }\n"
+                    "    .padding(20)\n"
+                    "}\n"
+                    "print \"[SWIFTUI] Component registered. Preview with: looping preview\"\n"
+                );
+        } else {
             UIProfileSpecs specs = resolve_ui_profile(target);
             prog.set_window(name + " Window", 850, 540)
                 .set_theme(specs.theme)
-                .add_card(24, 20, 390, 160, "🌟 " + name, "Ventana dinámica generada por Looping Engine 2.5\nDiseño Loop OS & Glassmorphism Reactivo")
+                .add_card(24, 20, 390, 160, "🌟 " + name, "Ventana dinámica generada por Looping v1.1 (Arch 3.0A)\nDiseño Loop OS & Glassmorphism Reactivo")
                 .add_card(434, 20, 390, 160, "⚡ Métricas & Hardware", "Perfil UI: " + specs.name + " (" + specs.pipeline + ")\nRefresco: " + std::to_string(specs.target_fps) + " FPS Direct")
-                .add_card(24, 200, 390, 180, "📦 Servicios Activos", "• Xtraps Engine v2.0\n• Looping JIT & Runtime v2.5\n• Audio Synthesizer Subsystem")
-                .add_card(434, 200, 390, 180, "🎯 Panel de Control", "Control directo del subsistema gráfico y ejecución de tareas reactivas.")
+                .add_card(24, 200, 390, 180, "📦 Módulos Integrados", "• CS ID Connect PKCE S256\n• CSMS E2EE Hardware Encryption\n• Looping AST & Runtime v1.1 (Arch 3.0A)")
+                .add_card(434, 200, 390, 180, "🎯 Panel de Control", "Control directo del subsistema gráfico y ejecución de snippets reactivos.")
                 .add_button(36, 420, "INICIAR PROCESO", "start_process")
                 .add_button(240, 420, "REINICIAR SERVICIOS", "restart_services")
                 .add_button(440, 420, "EXPORTAR REGISTRO", "export_log")
                 .add_code("play tone at 587 Hz for 80 ms\nplay tone at 880 Hz for 120 ms\nprint \"[DYNAMIC WINDOW] '" + name + "' inicializada con éxito.\"");
-        } else if (type == "arcade" || type == "game") {
-            prog.set_window(name + " 2D Game", 800, 600)
-                .add_import("loop.ui", "ui")
-                .add_import("loop.engine", "game")
-                .add_card(20, 20, 760, 80, "🎮 " + name, "State-of-the-art 2D Canvas Engine\nTarget: " + target)
-                .add_button(35, 120, "PLAY GAME", "start_game")
-                .add_code("play tone at 587 Hz for 80 ms\nplay tone at 880 Hz for 120 ms\nprint \"[GAME] Engine initialized at 60 FPS.\"");
-        } else if (type == "dashboard" || type == "launcher") {
-            prog.set_window(name + " Dashboard", 840, 560)
-                .add_card(20, 20, 800, 70, "🌟 " + name, "System Dashboard & Telemetry Monitor")
-                .add_card(20, 110, 380, 180, "CPU & MEMORY", "Usage: 14% • Temperature: 42°C\nStatus: Optimal")
-                .add_card(420, 110, 400, 180, "NETWORK & DISPLAY", "Pipeline: Direct V-Sync\nLatency: 0.18ms")
-                .add_button(35, 310, "REFRESH METRICS", "refresh_stats")
-                .add_code("print \"[DASHBOARD] Loaded telemetry metrics successfully.\"");
-        } else if (type == "tool" || type == "counter") {
-            prog.set_window(name + " Tool", 600, 400)
-                .add_card(20, 20, 560, 90, "⚡ " + name, "Dynamic Productivity Tool")
-                .add_button(35, 130, "EJECUTAR TAREA", "run_task")
-                .add_code("mut counter = 0\nfn run_task() {\n    counter += 1\n    print $\"Task executed. Counter: {counter}\"\n}\nprint \"Tool initialized and ready.\"");
-        } else {
-            prog.set_window(name, 700, 450)
-                .add_card(20, 20, 660, 90, name, "Dynamic Application generated dynamically")
-                .add_code("print $\"Dynamic application '{name}' running perfectly!\"");
         }
 
         return prog;

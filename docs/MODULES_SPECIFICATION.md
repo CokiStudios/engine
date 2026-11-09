@@ -1,6 +1,7 @@
 # 📦 Looping Modules Directory & Manual Authoring Guide
 
-> **Guía Oficial de Módulos para Looping Engine & smiledev (Comercial v1.0.0 / Arch 2.8A)**  
+> **Guía Oficial de Módulos para Looping Engine & smiledev (v1.1 Producción / Arch 3.0A)**  
+> *Canales Oficiales: Looping (Prod) • Omega Looping (RC) • Alpha! Looping (Super Experimental)*  
 > *Coki Studios & Holo Entertainment © 2026*
 
 ---
@@ -10,7 +11,8 @@
 | Módulo | Versión | Lenguaje | Punto de Entrada | Descripción |
 | :--- | :---: | :---: | :--- | :--- |
 | **`loop-core-utils`** | `1.1.0` | 🟢 Loop | `core_utils.loop` | Utilidades fundamentales de colecciones, parsers JSON y helpers reactivos. |
-| **`loop-math-3d`** | `1.2.0` | 🔵 C++ | `loop_math_3d.hpp` | Álgebra lineal acelerada por hardware, cuaterniones y física de proyectiles. |
+| **`loop-math-3d`** | `2.0.0` | 🔵 C++ | `loop_math_3d.hpp` | Motor matemático y físico 3D C++17: Vec3, Quaternions, Matrices 4x4, Raycasting 3D, colisiones (Esfera/AABB/Cápsula), física Rigidbody 120Hz+ y Z-Buffer TUI. |
+| **`loop-game-plus`** | `2.0.0` | 🟢 Loop | `loop-game-plus.loop` | Cámara orbital/chase 3D nativa (`math3d.*`), renderizado 3D sin overhead Python, sub-stepping físico `physics3d.step_body` y mandos multi-OS con deadzone radial. |
 | **`loop-cpp-snippets`**| `1.0.0` | 🔵 C++ | `cpp_snippets.hpp` | Benchmarking RAII, RingBuffers, hash FNV-1a y colisiones AABB. |
 | **`loop-gui-tk`** | `2.0.0` | 🟡 Python | `loop_gui_tk.py` | UI compleja con Tkinter: pestañas, tablas ordenables, árboles, editor monospaced, KPI cards, canvas vectorial 2D y schema declarativo. |
 | **`loop-gui-qt`** | `2.0.0` | 🟡 Python | `loop_gui_qt.py` | UI compleja con PyQt6 / PySide6 (con fallback Tkinter): temas QSS oscuros, QTabWidget, tablas ordenables, QTreeWidget, editor y sliders. |
@@ -240,6 +242,28 @@ csid_login_render(100, 100, "Conectar con CS ID")
 val user = csid_login_trigger_auth("Jerix Ortiz", "jerix@cokistudios.com")
 out($"Usuario verificado: {user['name']} ({user['email']})")
 ```
+
+---
+
+---
+
+### 5. Alojar y Distribuir Módulos en Repositorios Externos
+
+No dependes únicamente de la nube de Coki Studios. Puedes distribuir tus propios módulos alojándolos en:
+
+1. **Servidor HTTP con `index.json`**:
+   Crea un `index.json` en tu servidor web listando tus paquetes con sus enlaces `.tar.gz` o `code_payload`.
+2. **Directorios Web Estáticos**:
+   Sube la carpeta `mi-modulo/` con su `smile.json` a cualquier CDN o bucket S3/Cloudflare R2.
+3. **Repositorios Git**:
+   Sube tus módulos a GitHub o GitLab. `smiledev` los clona e instala con `smiledev install <nombre>`.
+4. **Directorios Locales**:
+   Comparte módulos localmente en tu red con `smiledev add-repo /ruta/a/mis-modulos`.
+
+#### Resolución Multifuente:
+* Si el módulo está en PostgreSQL y no en repositorios externos, se instala directo de PostgreSQL.
+* Si está en un solo repositorio, se instala de ese sin interrumpir.
+* Si está en varios repositorios, `smiledev` te presenta un menú interactivo para elegir el origen de descarga.
 
 ---
 

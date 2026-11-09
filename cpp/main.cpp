@@ -13,25 +13,27 @@ void print_usage(const char* prog_name) {
     std::cout << "  " << prog_name << " --native <script.loop>   Execute Looping script in pure OS native window\n";
     std::cout << "  " << prog_name << " window <name> [flags]    Create, synthesize & launch dynamic graphical window\n";
     std::cout << "  " << prog_name << " run <script.loop>        Execute Looping script\n";
-    std::cout << "  " << prog_name << " create <name> [--type]   Create and synthesize new dynamic program\n";
+    std::cout << "  " << prog_name << " create <name> [--type]   Create new app/game with reactive snippets (Arch 3.0A)\n";
     std::cout << "  " << prog_name << " compile <file.loop>      Compile script for target UI profile\n";
-    std::cout << "  " << prog_name << " preview <file.loop> [View] Live SwiftUI Canvas terminal preview\n";
+    std::cout << "  " << prog_name << " preview <file.loop> [View] Live SwiftUI / 3D Viewport terminal preview\n";
+    std::cout << "  " << prog_name << " preview3d <file.loop>    TrueColor Z-Buffer 3D Viewport terminal preview\n";
     std::cout << "  " << prog_name << " check <file.loop>        Static syntax & AST verification report\n";
     std::cout << "  " << prog_name << " ast <file.loop>          Display visual AST node tree & structure\n";
     std::cout << "  " << prog_name << " fmt <file.loop> [--write] Format & normalize .loop source file\n";
-    std::cout << "  " << prog_name << " doc [topic]              Built-in reference manual (syntax, math, crypto, csv, datetime, regex, ui)\n";
+    std::cout << "  " << prog_name << " doc [topic]              Built-in reference manual (syntax, math, game3d, crypto, csv, datetime, regex, ui)\n";
     std::cout << "  " << prog_name << " bench                    Run native C++17 VM throughput benchmark\n";
     std::cout << "  " << prog_name << " doctor                   Inspect engine subsystems & environment health\n";
     std::cout << "  " << prog_name << " auth <login|whoami|logout> CS ID Connect Developer authentication\n";
     std::cout << "  " << prog_name << " repl                     Launch interactive REPL shell\n";
     std::cout << "  " << prog_name << " eval \"<code>\"            Evaluate inline code string\n";
-    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (50 tests)\n";
-    std::cout << "  " << prog_name << " --version, -v            Display engine version\n";
+    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (69 tests)\n";
+    std::cout << "  " << prog_name << " --channel <alpha|omega|prod> Select tier (Alpha! Looping | Omega Looping RC | Prod)\n";
+    std::cout << "  " << prog_name << " --version, -v            Display engine version & channel nomenclature\n";
     std::cout << "  " << prog_name << " --help, -h               Show this help message\n\n";
 }
 
 int run_tests() {
-    std::cout << color::BOLD << color::CYAN << "[TEST SUITE]" << color::RESET << " Running Looping C++ verification suite (v1.0.0 Commercial / Arch 2.8A)...\n\n";
+    std::cout << color::BOLD << color::CYAN << "[TEST SUITE]" << color::RESET << " Running Looping C++ verification suite (v1.1 Production / Arch 3.0A)...\n\n";
     Interpreter vm;
 
     int passed = 0;
@@ -538,7 +540,7 @@ int run_tests() {
     );
     assert_test("System Hardware & Environment Inspection (sys.cpus, sys.version, sys.env)",
                 vm.variables["cores"].as_int() >= 1 &&
-                vm.variables["eng_v"].as_string() == "1.0.0-commercial" &&
+                vm.variables["eng_v"].as_string() == "1.1" &&
                 vm.variables["fallback_env"].as_string() == "default_ok");
 
     // Test 41: Default Function Arguments & Compound Modulo Assignment (%=)
@@ -811,6 +813,240 @@ int run_tests() {
                 vm.variables["is_h_ok"].is_truthy() &&
                 vm.imported_modules.count("csid-login-button") > 0);
 
+    // Test 59: Looping Engine v1.1 & Arch 3.0A Quantum Synthesis
+    vm.execute_code(
+        "val v_ver = sys.version\n"
+        "val v_arch = sys.arch_version\n"
+        "val v_ch_name = sys.channel_name\n"
+        "val v_cid = csid.client_id\n"
+        "val v_salt = csms.salt\n"
+    );
+    assert_test("Looping Engine v1.1 & Arch 3.0A Quantum Synthesis Inspection",
+                vm.variables["v_ver"].as_string() == "1.1" &&
+                vm.variables["v_arch"].as_string() == "3.0A" &&
+                vm.variables["v_ch_name"].as_string() == "Looping" &&
+                vm.variables["v_cid"].as_string() == "c0c11009-4ce0-4b11-8a01-1009c0c1e001" &&
+                vm.variables["v_salt"].as_string() == "CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+
+    // Test 60: CS ID Connect Integrated Default Module (PKCE S256 & Identity)
+    vm.execute_code(
+        "import csid\n"
+        "val l_url = csid.login_url()\n"
+        "val has_pkce = contains(l_url, \"code_challenge=\") && contains(l_url, \"code_challenge_method=S256\") && contains(l_url, \"client_id=c0c11009-4ce0-4b11-8a01-1009c0c1e001\")\n"
+        "val auth_res = csid.trigger_auth(\"Jerix Ortiz\", \"jerix@cokistudios.com\")\n"
+        "val is_auth_before = csid.is_authenticated()\n"
+        "val user_info = csid.whoami()\n"
+        "val u_name = user_info[\"name\"]\n"
+        "csid.logout()\n"
+        "val is_auth_after = csid.is_authenticated()\n"
+    );
+    assert_test("CS ID Connect Integrated Default Module (PKCE S256 & Identity)",
+                vm.variables["has_pkce"].is_truthy() &&
+                vm.variables["is_auth_before"].is_truthy() &&
+                vm.variables["u_name"].as_string() == "Jerix Ortiz" &&
+                !vm.variables["is_auth_after"].is_truthy());
+
+    // Test 61: CSMS E2EE Hardware-Backed Cryptography Subsystem
+    vm.execute_code(
+        "import csms\n"
+        "val room_key = csms.derive_key(\"room_alpha_7\")\n"
+        "val plain_msg = \"Quantum Synthesis Protocol v3.0A\"\n"
+        "val enc_payload = csms.encrypt(\"room_alpha_7\", plain_msg)\n"
+        "val is_enc_format = starts_with(enc_payload, \"🔒 enc:v1:\")\n"
+        "val decrypted = csms.decrypt(\"room_alpha_7\", enc_payload)\n"
+    );
+    assert_test("CSMS E2EE Hardware-Backed Cryptography Subsystem",
+                vm.variables["is_enc_format"].is_truthy() &&
+                vm.variables["decrypted"].as_string() == "Quantum Synthesis Protocol v3.0A" &&
+                !vm.variables["room_key"].as_string().empty());
+
+    // Test 62: Universal Core Utils Subsystem (pad, slugify, format_bytes, truncate, repeat)
+    vm.execute_code(
+        "import utils\n"
+        "val u_pad = utils.pad(\"coki\", 8, \"-\")\n"
+        "val u_slug = utils.slugify(\"Coki Studios & Looping 1.1!\")\n"
+        "val u_bytes = utils.format_bytes(1048576)\n"
+        "val u_trunc = utils.truncate(\"Quantum Synthesis\", 7)\n"
+        "val u_rep = utils.repeat(\"CS\", 3)\n"
+    );
+    assert_test("Universal Core Utils Subsystem (pad, slugify, format_bytes, truncate, repeat)",
+                vm.variables["u_pad"].as_string() == "coki----" &&
+                vm.variables["u_slug"].as_string() == "coki-studios-looping-1-1" &&
+                vm.variables["u_bytes"].as_string() == "1.00 MB" &&
+                vm.variables["u_trunc"].as_string() == "Quantum..." &&
+                vm.variables["u_rep"].as_string() == "CSCSCS");
+
+    // Test 63: Universal 2D Game Plus & SFX Subsystem (AABB, circle, distance, clamp, lerp, spawn_particle, play_sfx)
+    vm.execute_code(
+        "import game_plus\n"
+        "val aabb_hit = game.collide_aabb(10, 10, 30, 30, 25, 25, 30, 30)\n"
+        "val aabb_miss = game.collide_aabb(10, 10, 20, 20, 50, 50, 20, 20)\n"
+        "val circ_hit = game.collide_circle(0, 0, 10, 12, 0, 5)\n"
+        "val dist_val = game.distance(0, 0, 3, 4)\n"
+        "val clamped = game.clamp(150, 10, 100)\n"
+        "val lerped = game.lerp(10, 30, 0.5)\n"
+        "val sfx_ok = game.play_sfx(\"coin\")\n"
+        "val part_res = game.spawn_particle(\"sparkle\", 100, 200, 0, -2, \"#38bdf8\")\n"
+        "val part_alive = part_res[\"alive\"]\n"
+    );
+    assert_test("Universal 2D Game Plus & SFX Subsystem (AABB, circle, lerp, distance, particles, sfx)",
+                vm.variables["aabb_hit"].is_truthy() &&
+                !vm.variables["aabb_miss"].is_truthy() &&
+                vm.variables["circ_hit"].is_truthy() &&
+                vm.variables["dist_val"].as_number() == 5.0 &&
+                vm.variables["clamped"].as_number() == 100.0 &&
+                vm.variables["lerped"].as_number() == 20.0 &&
+                vm.variables["sfx_ok"].is_truthy() &&
+                vm.variables["part_alive"].is_truthy());
+
+    // Test 64: Embedded Snippet App & Game Synthesis Pipeline (Arch 3.0A Dynamic Templates)
+    DynamicProgram dyn_game = Compiler::create_template("game", "CyberTestGame", "shine_ui");
+    std::string dyn_game_src = dyn_game.emit_source();
+    bool has_jump_snip = dyn_game_src.find("insert snippet as on_player_jump:") != std::string::npos;
+    bool has_coin_snip = dyn_game_src.find("insert snippet as on_collect_coin:") != std::string::npos;
+    bool has_cs_mods = dyn_game_src.find("import csid as csid") != std::string::npos &&
+                       dyn_game_src.find("import game_plus as game_plus") != std::string::npos;
+
+    DynamicProgram dyn_dash = Compiler::create_template("dashboard", "CS_Enterprise_App", "shine_ui");
+    std::string dyn_dash_src = dyn_dash.emit_source();
+    bool has_csid_snip = dyn_dash_src.find("insert snippet as on_csid_login:") != std::string::npos;
+    bool has_csms_snip = dyn_dash_src.find("insert snippet as on_csms_encrypt_payload:") != std::string::npos;
+
+    Interpreter test_vm;
+    test_vm.execute_code(dyn_game_src);
+    // Trigger snippet jump via window.click / trigger
+    test_vm.eval(std::make_shared<CallExpr>("window.click", std::vector<std::shared_ptr<Expr>>{
+        std::make_shared<LiteralExpr>(Value("on_player_jump"))
+    }));
+    bool jump_executed = test_vm.variables["is_jumping"].is_truthy();
+
+    assert_test("Embedded Snippet App & Game Synthesis Pipeline (Arch 3.0A Dynamic Templates)",
+                has_jump_snip && has_coin_snip && has_cs_mods &&
+                has_csid_snip && has_csms_snip && jump_executed);
+
+    // Test 65: 3D Linear Algebra, Quaternions, 4x4 Matrices & Perspective Projection (math3d.*)
+    vm.execute_code(
+        "val v_a = math3d.vec3(1, 0, 0)\n"
+        "val v_b = math3d.vec3(0, 1, 0)\n"
+        "val v_cross = math3d.cross(v_a, v_b)\n"
+        "val v_dot = math3d.dot([2, 3, 4], [1, 2, 3])\n"
+        "val v_dist = math3d.distance([0, 0, 0], [3, 4, 12])\n"
+        "val q_yaw = math3d.quat_euler(0, 90, 0)\n"
+        "val v_rot = math3d.quat_rotate(q_yaw, [0, 0, 1])\n"
+        "val m_trs = math3d.mat4_trs([10, 5, -2], [0, 0, 0], [2, 2, 2])\n"
+        "val v_trs = math3d.transform_point(m_trs, [1, 1, 1])\n"
+        "val proj = math3d.project([0, 2, 12], [0, 2, 0], [0, 2, 10], 60, 800, 600)\n"
+        "val proj_vis = proj[\"visible\"]\n"
+    );
+    bool cross_ok = vm.variables["v_cross"].list_val && (*vm.variables["v_cross"].list_val)[2].as_number() == 1.0;
+    bool rot_ok = vm.variables["v_rot"].list_val && std::abs((*vm.variables["v_rot"].list_val)[0].as_number() - 1.0) < 1e-4;
+    bool trs_ok = vm.variables["v_trs"].list_val && std::abs((*vm.variables["v_trs"].list_val)[0].as_number() - 12.0) < 1e-4;
+    assert_test("3D Linear Algebra, Quaternions, Mat4 TRS & Perspective Projection (math3d.*)",
+                cross_ok &&
+                vm.variables["v_dot"].as_number() == 20.0 &&
+                vm.variables["v_dist"].as_number() == 13.0 &&
+                rot_ok && trs_ok &&
+                vm.variables["proj_vis"].is_truthy());
+
+    // Test 66: 3D Collisions, Raycasting & 120Hz Sub-Stepping Rigidbody Physics (physics3d.*)
+    vm.execute_code(
+        "val sph_hit = physics3d.collide_sphere([0, 2, 0], 1.5, [1.8, 2, 0], 1.0)\n"
+        "val sph_miss = physics3d.collide_sphere([0, 2, 0], 1.0, [5, 2, 0], 1.0)\n"
+        "val box3_hit = physics3d.collide_aabb([0, 2, 0], [4, 4, 4], [3, 2, 0], [4, 4, 4])\n"
+        "val cap_hit = physics3d.collide_capsule_sphere([0, 0, 0], [0, 4, 0], 1.0, [1.5, 2, 0], 0.8)\n"
+        "val r_sph = physics3d.raycast_sphere([0, 2, -10], [0, 0, 1], [0, 2, 5], 2.0)\n"
+        "val r_box = physics3d.raycast_aabb([0, 2, -10], [0, 0, 1], [0, 2, 4], [4, 4, 4])\n"
+        "val body0 = {\"pos\": [0, 5, 0], \"vel\": [4, 0, 0], \"radius\": 1.0, \"gravity\": -24.0, \"ground_y\": 0.0}\n"
+        "val body1 = physics3d.step_body(body0, 0.5, 8)\n"
+        "val rs_hit = r_sph[\"hit\"]\n"
+        "val rs_dist = r_sph[\"distance\"]\n"
+        "val rb_hit = r_box[\"hit\"]\n"
+        "val b1_pos = body1[\"pos\"]\n"
+    );
+    bool b1_ok = vm.variables["b1_pos"].list_val &&
+                 (*vm.variables["b1_pos"].list_val)[0].as_number() > 1.5 &&
+                 (*vm.variables["b1_pos"].list_val)[1].as_number() >= 1.0;
+    assert_test("3D Collisions, Raycasting & 120Hz Sub-Stepping Rigidbody Physics (physics3d.*)",
+                vm.variables["sph_hit"].is_truthy() &&
+                !vm.variables["sph_miss"].is_truthy() &&
+                vm.variables["box3_hit"].is_truthy() &&
+                vm.variables["cap_hit"].is_truthy() &&
+                vm.variables["rs_hit"].is_truthy() &&
+                std::abs(vm.variables["rs_dist"].as_number() - 13.0) < 1e-4 &&
+                vm.variables["rb_hit"].is_truthy() &&
+                b1_ok);
+
+    // Test 67: 3D Scene Graph, Directives & TrueColor Z-Buffer Viewport Rasterizer (scene3d.* / spawn3d.*)
+    Interpreter vm3d;
+    vm3d.execute_code(
+        "define game3d \"QuantumOdyssey3D\" version 3.0:\n"
+        "    scene3d.world(name: \"NeonGrid3D\", size: (160, 80, 160), sky: \"cyber_night\", fog: 0.010, grid: true)\n"
+        "    camera3d.set(mode: \"chase\", pos: (0, 8, -16), target: (0, 2, 12), fov: 64, smooth: 0.14)\n"
+        "    light3d.directional(dir: (-0.4, -1.0, -0.3), color: \"#ffffff\", intensity: 1.1)\n"
+        "    light3d.point(at: (0, 10, 18), color: \"#38bdf8\", intensity: 1.4, range: 50)\n"
+        "    physics3d.config(gravity: -26.0, substeps: 4, friction: 0.86, bounce: 0.12)\n"
+        "    spawn3d.player(\"AngelPilot3D\", at: (0, 2, 0), mesh: \"hovercraft\", speed: 24, jump: 16)\n"
+        "    spawn3d.box(at: (0, -0.5, 14), size: (12, 1, 20), color: \"#6366f1\")\n"
+        "    spawn3d.moving_platform(at: (0, 2, 26), size: (6, 1, 6), axis: \"x\", range: (-8, 8), speed: 8)\n"
+        "    spawn3d.crystal(at: (0, 3, 14), points: 200)\n"
+        "    spawn3d.enemy(\"CyberDrone3D\", at: (0, 3, 22), range: (-6, 6), speed: 9, health: 50)\n"
+        "    spawn3d.portal(at: (0, 4, 38), radius: 3.5, label: \"OMEGA GATE\")\n"
+        "    scene3d.step(0.016)\n"
+        "    val st3d = scene3d.stats()\n"
+        "    val tui3d = scene3d.render_tui(48, 12)\n"
+        "    val ray_sc = physics3d.raycast_scene([0, 3, 0], [0, 0, 1])\n"
+        "    val st_cnt = st3d[\"entities\"]\n"
+        "    val st_hz = st3d[\"effective_hz\"]\n"
+        "    val ray_sc_hit = ray_sc[\"hit\"]\n"
+    );
+    assert_test("3D Scene Graph, Directives & Z-Buffer Software Rasterizer (scene3d.* / spawn3d.*)",
+                vm3d.current_scene3d.active &&
+                vm3d.variables["st_cnt"].as_int() == 6 &&
+                vm3d.variables["st_hz"].as_int() == 240 &&
+                vm3d.variables["ray_sc_hit"].is_truthy() &&
+                vm3d.variables["tui3d"].as_string().find("SHINE LOOP 3D VIEWPORT") != std::string::npos);
+
+    // Test 68: Arch 3.0A 3D Game Template Synthesis (Compiler::create_template("game3d"))
+    DynamicProgram dyn_g3d = Compiler::create_template("game3d", "HyperCircuit3D", "xui");
+    std::string dyn_g3d_src = dyn_g3d.emit_source();
+    Interpreter vm_tpl3d;
+    vm_tpl3d.execute_code(dyn_g3d_src);
+    vm_tpl3d.eval(std::make_shared<CallExpr>("window.click", std::vector<std::shared_ptr<Expr>>{
+        std::make_shared<LiteralExpr>(Value("on_raycast_scan"))
+    }));
+    assert_test("Arch 3.0A 3D Game Template Synthesis & Raycast Snippet Execution",
+                vm_tpl3d.current_scene3d.active &&
+                vm_tpl3d.variables["score_3d"].as_int() == 250);
+
+    // Test 69: Official Release Nomenclature (Alpha! Looping, Omega Looping RC, Looping Prod v1.1 / Arch 3.0A)
+    Interpreter vm_ch;
+    vm_ch.execute_code(
+        "val ch_alpha_name = looping.set_channel(\"alpha\")\n"
+        "val ch_alpha_ver = sys.version\n"
+        "val ch_alpha_ed = sys.edition\n"
+        "val ch_omega_name = looping.set_channel(\"omega\")\n"
+        "val ch_omega_ver = sys.version\n"
+        "val ch_omega_ed = sys.edition\n"
+        "val ch_prod_name = looping.set_channel(\"prod\")\n"
+        "val ch_prod_ver = sys.version\n"
+        "val ch_arch = sys.arch_version\n"
+        "val ch_map = looping.channels()\n"
+        "val ch_map_alpha = ch_map[\"alpha\"]\n"
+        "val ch_map_omega = ch_map[\"omega\"]\n"
+    );
+    assert_test("Release Nomenclature (Alpha! Looping Super Experimental, Omega Looping RC, Looping Prod v1.1 / Arch 3.0A)",
+                vm_ch.variables["ch_alpha_name"].as_string() == "Alpha! Looping" &&
+                vm_ch.variables["ch_alpha_ver"].as_string() == "1.1-alpha" &&
+                vm_ch.variables["ch_alpha_ed"].as_string().find("Super Experimental") != std::string::npos &&
+                vm_ch.variables["ch_omega_name"].as_string() == "Omega Looping" &&
+                vm_ch.variables["ch_omega_ver"].as_string() == "1.1-omega" &&
+                vm_ch.variables["ch_omega_ed"].as_string().find("Release Candidate") != std::string::npos &&
+                vm_ch.variables["ch_prod_name"].as_string() == "Looping" &&
+                vm_ch.variables["ch_prod_ver"].as_string() == "1.1" &&
+                vm_ch.variables["ch_arch"].as_string() == "3.0A" &&
+                vm_ch.variables["ch_map_alpha"].as_string().find("Alpha! Looping") != std::string::npos &&
+                vm_ch.variables["ch_map_omega"].as_string().find("Omega Looping") != std::string::npos);
+
     std::cout << "\n" << color::BOLD << (passed == total ? color::GREEN : color::YELLOW)
               << "Results: " << passed << "/" << total << " tests passed." << color::RESET << "\n\n";
 
@@ -819,6 +1055,28 @@ int run_tests() {
 
 int main(int argc, char* argv[]) {
     Interpreter vm;
+
+    // Pre-scan channel flags (--channel=<ch>, --channel <ch>, --alpha, --omega, --rc, --prod)
+    std::vector<char*> filtered_argv;
+    filtered_argv.push_back(argv[0]);
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a.rfind("--channel=", 0) == 0) {
+            vm.set_channel(a.substr(10));
+        } else if (a == "--channel" && i + 1 < argc) {
+            vm.set_channel(argv[++i]);
+        } else if (a == "--alpha") {
+            vm.set_channel("alpha");
+        } else if (a == "--omega" || a == "--rc") {
+            vm.set_channel("omega");
+        } else if (a == "--prod" || a == "--stable") {
+            vm.set_channel("prod");
+        } else {
+            filtered_argv.push_back(argv[i]);
+        }
+    }
+    argc = static_cast<int>(filtered_argv.size());
+    argv = filtered_argv.data();
 
     if (argc < 2) {
         REPL::run(vm);
@@ -834,8 +1092,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (first_arg == "--version" || first_arg == "-v") {
-        std::cout << "Looping Engine v" << vm.app_version << " (Commercial Production Release)\n";
-        std::cout << "Architecture: " << vm.arch_version << " (Quantum Signature) | POSIX/Win32 Native\n";
+        std::cout << vm.channel_name << " Engine v" << vm.engine_version << " (" << vm.edition << ")\n";
+        std::cout << "Architecture: Arch " << vm.arch_version << " (Quantum 3D Synthesis & CS Ecosystem) | Darwin/POSIX/Win32 Native\n";
+        std::cout << "Channels: Looping (Production) • Omega Looping (RC) • Alpha! Looping (Super Experimental)\n";
         std::cout << "Developed by Coki Studios & Holo Entertainment © 2026\n";
         return 0;
     }
@@ -851,15 +1110,18 @@ int main(int argc, char* argv[]) {
 
     if (first_arg == "doctor") {
         vm.print_banner();
-        std::cout << color::BOLD << color::CYAN << "[LOOPING DOCTOR]" << color::RESET << " Inspecting C++ Native Engine & Subsystems...\n\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Engine Version     : v" << vm.app_version << " (C++17 Native)\n";
+        std::cout << color::BOLD << color::CYAN << "[LOOPING DOCTOR]" << color::RESET << " Inspecting C++ Native Engine & Subsystems (Arch " << vm.arch_version << ")...\n\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Release Channel    : " << vm.channel_name << " [" << vm.channel << "]\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Engine Version     : v" << vm.engine_version << " (C++17 Native / Arch " << vm.arch_version << ")\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " Host Platform      : " << vm.eval(std::make_shared<VariableExpr>("sys.platform")).as_string()
                   << " (" << vm.eval(std::make_shared<VariableExpr>("sys.arch")).as_string() << ")\n";
         std::cout << "  " << (vm.python_bridge.is_available ? color::GREEN : color::YELLOW)
                   << (vm.python_bridge.is_available ? "✔" : "⚠") << color::RESET
                   << " Python Interop     : " << (vm.python_bridge.is_available ? "Available (" + vm.python_bridge.detected_exe + ")" : "Not found in PATH") << "\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " UI Target Profiles : Shine UI (60Hz), XUI (240Hz), flUI (120Hz), C2 (.c2), Vintage, hiUI\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Crypto Subsystem   : SHA-256, FNV-1a, Base64, UUID v4, CSMS E2EE Key Derivation\n\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " 3D Quantum Engine  : Looping3D Z-Buffer + 120Hz/240Hz Sub-Stepping Physics + Raycast\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " UI Target Profiles : Shine UI (60Hz), XUI (240Hz), flUI (120Hz), SwiftUI (Apple 120Hz), C2 (.c2)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Default CS Modules : csid (PKCE S256), csms (E2EE), game_plus (2D/3D), core_utils, audio, ai\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Crypto Subsystem   : SHA-256, FNV-1a, Base64, UUID v4, CSMS E2EE Key Derivation, CRC32\n\n";
         return 0;
     }
 
@@ -902,7 +1164,7 @@ int main(int argc, char* argv[]) {
         auto t1 = std::chrono::high_resolution_clock::now();
         double parse_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
 
-        size_t total_nodes = 0, fn_count = 0, ui_count = 0, entity_count = 0, loop_count = 0;
+        size_t total_nodes = 0, fn_count = 0, ui_count = 0, entity_count = 0, entity3d_count = 0, loop_count = 0;
         std::function<void(const std::vector<std::shared_ptr<Stmt>>&)> walk_stmts = [&](const std::vector<std::shared_ptr<Stmt>>& list) {
             for (const auto& st : list) {
                 if (!st) continue;
@@ -914,6 +1176,8 @@ int main(int argc, char* argv[]) {
                     ui_count++;
                 } else if (std::dynamic_pointer_cast<SpawnEntityStmt>(st)) {
                     entity_count++;
+                } else if (std::dynamic_pointer_cast<SpawnEntity3DStmt>(st)) {
+                    entity3d_count++;
                 } else if (auto fr = std::dynamic_pointer_cast<ForRangeStmt>(st)) {
                     loop_count++;
                     walk_stmts(fr->body);
@@ -945,6 +1209,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  • Functions Defined    : " << fn_count << "\n";
         std::cout << "  • UI Directives        : " << ui_count << "\n";
         std::cout << "  • 2D Entities          : " << entity_count << "\n";
+        std::cout << "  • 3D Entities          : " << entity3d_count << "\n";
         std::cout << "  • Loop Constructs      : " << loop_count << "\n";
         return 0;
     }
@@ -986,6 +1251,8 @@ int main(int argc, char* argv[]) {
                 else if (auto tc = std::dynamic_pointer_cast<TryCatchStmt>(st)) label = "TryCatchBlock(err=" + tc->err_var + ")";
                 else if (auto ui = std::dynamic_pointer_cast<DrawUIStmt>(st)) label = "DrawUI(" + ui->ui_type + ": \"" + (ui->title.empty() ? ui->text : ui->title) + "\")";
                 else if (auto sp = std::dynamic_pointer_cast<SpawnEntityStmt>(st)) label = "SpawnEntity(" + sp->entity_type + ": \"" + sp->name + "\")";
+                else if (auto sp3 = std::dynamic_pointer_cast<SpawnEntity3DStmt>(st)) label = "SpawnEntity3D(" + sp3->entity_type + ": \"" + sp3->name + "\")";
+                else if (auto sc3 = std::dynamic_pointer_cast<Scene3DConfigStmt>(st)) label = "Scene3DConfig(" + sc3->category + ")";
                 else if (std::dynamic_pointer_cast<PrintStmt>(st)) label = "PrintStmt";
                 else if (std::dynamic_pointer_cast<ReturnStmt>(st)) label = "ReturnStmt";
                 else if (auto cs = std::dynamic_pointer_cast<CallStmt>(st)) label = "CallStmt(" + cs->name + ")";
@@ -1055,7 +1322,13 @@ int main(int argc, char* argv[]) {
 
     if (first_arg == "doc" || first_arg == "docs") {
         std::string topic = (argc >= 3) ? argv[2] : "all";
-        std::cout << color::BOLD << color::CYAN << "═══ LOOPING v" << vm.app_version << " BUILT-IN REFERENCE MANUAL ═══" << color::RESET << "\n\n";
+        std::cout << color::BOLD << color::CYAN << "═══ " << vm.channel_name << " v" << vm.engine_version << " (Arch " << vm.arch_version << ") REFERENCE MANUAL ═══" << color::RESET << "\n\n";
+        if (topic == "all" || topic == "channels" || topic == "nomenclature") {
+            std::cout << color::YELLOW << "▸ OFFICIAL RELEASE NOMENCLATURE & CHANNELS:" << color::RESET << "\n"
+                      << "  • Looping        [prod]  : Production Release (v1.1 / Arch 3.0A)\n"
+                      << "  • Omega Looping  [omega] : Release Candidate / RC (v1.1-omega / Arch 3.0A)\n"
+                      << "  • Alpha! Looping [alpha] : Super Experimental Lab Builds (v1.1-alpha / Arch 3.0A)\n\n";
+        }
         if (topic == "all" || topic == "syntax") {
             std::cout << color::YELLOW << "▸ SYNTAX & CONTROL FLOW:" << color::RESET << "\n"
                       << "  let x = 10 | mut y = 20 | val z := 30 | x %= 7\n"
@@ -1099,6 +1372,19 @@ int main(int argc, char* argv[]) {
                       << "  window.create(title, w, h, target), ui.card(at: (x,y), size: (w,h), title: \"...\")\n"
                       << "  draw slider, draw toggle, draw progress, spawn.sprite, audio.tone(hz, ms)\n\n";
         }
+        if (topic == "all" || topic == "game3d" || topic == "3d") {
+            std::cout << color::YELLOW << "▸ 3D QUANTUM GAME ENGINE & 120Hz SUB-STEPPING PHYSICS (scene3d.* / spawn3d.* / math3d.* / physics3d.*):" << color::RESET << "\n"
+                      << "  define game3d \"CyberOdyssey\" version 3.0:\n"
+                      << "  scene3d.world(name: \"Arena\", size: (180,80,180), sky: \"cyber_night\", fog: 0.010, grid: true)\n"
+                      << "  camera3d.set(mode: \"chase\"|\"fps\"|\"orbit\"|\"topdown\", pos: (0,8,-16), target: (0,2,10), fov: 64)\n"
+                      << "  light3d.directional(dir: (-0.4,-1,-0.3), color: \"#fff\", intensity: 1.1) | light3d.point(at: (x,y,z), ...)\n"
+                      << "  physics3d.config(gravity: -26.0, substeps: 4, friction: 0.86, bounce: 0.12)\n"
+                      << "  spawn3d.player, spawn3d.box, spawn3d.moving_platform, spawn3d.sphere, spawn3d.cylinder, spawn3d.pyramid\n"
+                      << "  spawn3d.ring, spawn3d.crystal, spawn3d.enemy, spawn3d.boss, spawn3d.pad, spawn3d.hazard, spawn3d.portal\n"
+                      << "  math3d: vec3, add, sub, scale, dot, cross, normalize, lerp, reflect, quat_euler, quat_slerp, quat_rotate, mat4_trs, project\n"
+                      << "  physics3d: collide_sphere, collide_aabb, collide_capsule_sphere, raycast_sphere, raycast_aabb, raycast_scene, step_body\n"
+                      << "  CLI: looping preview3d game.loop | looping create MyGame3D --type game3d | looping --native game.loop\n\n";
+        }
         if (topic == "all" || topic == "swiftui" || topic == "apple") {
             std::cout << color::YELLOW << "▸ DECLARATIVE SWIFTUI SUBSYSTEM (v2.9 Apple Ecosystem Experience):" << color::RESET << "\n"
                       << "  view DashboardView {\n"
@@ -1136,11 +1422,17 @@ int main(int argc, char* argv[]) {
 
         if (auth_subcmd == "login") {
             std::cout << color::BOLD << color::CYAN << "[CS ID Connect]" << color::RESET << " Initiating authentication flow for Looping CLI...\n";
-            std::string client_id = "looping-engine-cli";
+            std::string client_id = "c0c11009-4ce0-4b11-8a01-1009c0c1e001";
             std::string redirect_uri = "https://cokistudios.com/client-demo";
+            std::string code_verifier = CryptoUtils::random_hex(32);
+            std::string code_challenge = CryptoUtils::sha256_hex(code_verifier);
+            std::string state = CryptoUtils::random_hex(16);
             std::string auth_url = "https://cokistudios.com/authorize?client_id=" + client_id + 
                                   "&redirect_uri=" + redirect_uri + 
-                                  "&response_type=code&scope=openid+profile+email+offline_access";
+                                  "&response_type=code&scope=openid+profile+email+offline_access" +
+                                  "&code_challenge=" + code_challenge + 
+                                  "&code_challenge_method=S256" + 
+                                  "&state=" + state;
 
             std::cout << color::YELLOW << "Opening authorization URL in browser:" << color::RESET << "\n";
             std::cout << "  " << auth_url << "\n\n";
@@ -1160,6 +1452,7 @@ int main(int argc, char* argv[]) {
                 if (out.is_open()) {
                     out << "token=" << token << "\n";
                     out << "client_id=" << client_id << "\n";
+                    out << "code_verifier=" << code_verifier << "\n";
                     out << "auth_time=" << time(nullptr) << "\n";
                     out.close();
                     std::cout << color::GREEN << "✔ [SUCCESS]" << color::RESET << " Successfully authenticated with CS ID Connect!\n";
@@ -1251,9 +1544,9 @@ int main(int argc, char* argv[]) {
         if (!theme.empty()) win.set_theme(theme);
 
         UIProfileSpecs specs = resolve_ui_profile(target_ui);
-        win.add_card(title, "Ventana dinámica generada por Looping Engine v2.5\nArquitectura: " + specs.name + " (" + specs.pipeline + ")")
+        win.add_card(title, "Ventana dinámica generada por Looping v1.1 (Arch 3.0A)\nArquitectura: " + specs.name + " (" + specs.pipeline + ")")
            .add_card("Métricas de Sistema", "Frecuencia: " + std::to_string(specs.target_fps) + " FPS\nLatencia Entrada: <0.2ms\nEstado: Óptimo")
-           .add_card("Módulos Activos", "• Xtraps Background Engine\n• Looping AST & Interpreter v2.5\n• Audio Synthesizer Core")
+           .add_card("Módulos Activos", "• Xtraps Background Engine\n• Looping AST & Interpreter v1.1 (Arch 3.0A)\n• Audio Synthesizer Core")
            .add_card("Acciones de Control", "Panel reactivo interactivo. Haz clic en los botones para disparar eventos.")
            .add_button("INICIAR PROCESO", "start_process")
            .add_button("REINICIAR SERVICIOS", "restart_services")
@@ -1268,11 +1561,11 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // Dynamic Program Creator: looping create <name> [--type <arcade|dashboard|tool|window>] [--target <shine_ui|xui|flui>] [--output <out>]
+    // Dynamic Program Creator: looping create <name> [--type <game|arcade|rpg|dashboard|tool|swiftui>] [--target <shine_ui|xui|flui>] [--output <out>]
     if (first_arg == "create" || first_arg == "new") {
         if (argc < 3) {
             std::cerr << color::RED << "Error: 'create' requires an application name." << color::RESET << "\n";
-            std::cerr << "Usage: " << argv[0] << " create <name> [--type <game|dashboard|tool>] [--target <shine_ui|xui|flui>] [--output <out>]\n";
+            std::cerr << "Usage: " << argv[0] << " create <name> [--type <game|rpg|dashboard|tool|swiftui>] [--target <shine_ui|xui|flui>] [--output <out>]\n";
             return 1;
         }
 
@@ -1280,29 +1573,57 @@ int main(int argc, char* argv[]) {
         std::string type = "dashboard";
         std::string target_ui = "shine_ui";
         std::string out_path = "";
+        bool show_snippets = false;
+        (void)show_snippets;
 
         for (int i = 3; i < argc; ++i) {
             std::string arg = argv[i];
-            if ((arg == "--type" || arg == "-k") && i + 1 < argc) {
+            if ((arg == "--type" || arg == "-k" || arg == "-t") && i + 1 < argc) {
                 type = argv[++i];
-            } else if ((arg == "--target" || arg == "-t" || arg == "--ui") && i + 1 < argc) {
+            } else if ((arg == "--target" || arg == "--ui") && i + 1 < argc) {
                 target_ui = argv[++i];
             } else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
                 out_path = argv[++i];
+            } else if (arg == "--snippets" || arg == "-s") {
+                show_snippets = true;
             }
         }
+
+        std::cout << color::BOLD << color::CYAN << "⚡ [LOOPING CREATE]" << color::RESET << " Initializing dynamic " 
+                  << ((type == "game" || type == "arcade" || type == "rpg") ? "Game" : "Application")
+                  << ": " << color::BOLD << app_name << color::RESET << " (Type: " << color::YELLOW << type << color::RESET 
+                  << ", Target: " << color::GREEN << target_ui << color::RESET << ")\n";
 
         DynamicProgram prog = Compiler::create_template(type, app_name, target_ui);
         std::string created_path;
         bool ok = Compiler::compile_dynamic_program(prog, out_path, &created_path);
+        if (ok) {
+            std::cout << "\n" << color::GREEN << "✔ Successfully generated dynamic application template!" << color::RESET << "\n";
+            std::cout << color::BOLD << "  • Artifact:" << color::RESET << " " << created_path << "\n";
+            std::cout << color::BOLD << "  • Arch:" << color::RESET << " 3.0A Quantum Synthesis & Coki Studios Ecosystem\n";
+            std::cout << color::BOLD << "  • Bundled CS Modules:" << color::RESET << " csid, csms, game_plus, core_utils, audio, ai\n";
+            if (!prog.snippets.empty()) {
+                std::cout << color::BOLD << "  • Embedded Reactive Snippets (" << prog.snippets.size() << "):" << color::RESET << "\n";
+                for (const auto& sn : prog.snippets) {
+                    std::cout << "    - " << color::CYAN << sn.name << color::RESET << " (" << sn.type << ")\n";
+                }
+            }
+            std::cout << color::BOLD << "\n🚀 Next steps:" << color::RESET << "\n";
+            std::cout << "  " << argv[0] << " " << created_path << "            # Run application directly\n";
+            std::cout << "  " << argv[0] << " check " << created_path << "      # Verify syntax and AST\n";
+            if (type == "swiftui" || target_ui == "swiftui") {
+                std::cout << "  " << argv[0] << " preview " << created_path << "    # SwiftUI live Canvas preview\n";
+            }
+            std::cout << "\n";
+        }
         return ok ? 0 : 1;
     }
 
-    // Preview command: looping preview <script.loop> [view_name]
-    if (first_arg == "preview" || first_arg == "canvas") {
+    // Preview command: looping preview <script.loop> [view_name] OR looping preview3d <script.loop>
+    if (first_arg == "preview" || first_arg == "canvas" || first_arg == "preview3d") {
         if (argc < 3) {
-            std::cerr << color::RED << "Error: 'preview' requires a .loop script file containing SwiftUI views." << color::RESET << "\n";
-            std::cerr << "Usage: " << argv[0] << " preview <file.loop> [ComponentName]\n";
+            std::cerr << color::RED << "Error: '" << first_arg << "' requires a .loop script file." << color::RESET << "\n";
+            std::cerr << "Usage: " << argv[0] << " " << first_arg << " <file.loop> [ComponentName]\n";
             return 1;
         }
         std::string script_path = argv[2];
@@ -1317,6 +1638,10 @@ int main(int argc, char* argv[]) {
         buffer << file.rdbuf();
         vm.execute_code(buffer.str());
 
+        if (first_arg == "preview3d" || (vm.current_scene3d.active && vm.swiftui_components.empty())) {
+            std::cout << vm.current_scene3d.render_tui(74, 20);
+            return 0;
+        }
         if (!target_view.empty()) {
             vm.eval(std::make_shared<CallExpr>("swiftui.preview", std::vector<std::shared_ptr<Expr>>{
                 std::make_shared<LiteralExpr>(Value(target_view))
@@ -1402,22 +1727,37 @@ int main(int argc, char* argv[]) {
                 vm.current_window.show(true, "native");
             }
         } else {
-            // Check if script directory has story_window.js or if loop-node-window is available for 2D Stage GUI
-            std::string script_dir = ".";
-            size_t slash_pos = script_path.find_last_of("/\\");
-            if (slash_pos != std::string::npos) script_dir = script_path.substr(0, slash_pos);
-            std::string custom_win = script_dir + "/story_window.js";
-            std::ifstream cw_f(custom_win);
-            std::ifstream nw_f("modules/loop-node-window/index.js");
-            if (cw_f.good()) {
-                std::cout << color::GREEN << "[2D STAGE LAUNCH]" << color::RESET 
-                          << " Launching custom 2D Interactive Sandbox Window (" << custom_win << ")...\n";
-                std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"" + custom_win + "\"";
-                system(cmd.c_str());
-            } else if (nw_f.good()) {
-                std::cout << color::GREEN << "[2D STAGE LAUNCH]" << color::RESET 
-                          << " Launching loop-node-window 2D Quantum Stage for " << script_path << "...\n";
-                std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"modules/loop-node-window/index.js\" --game --script \"" + script_path + "\"";
+            // Universal 2D/3D Stage GUI Launcher: resolves loop-node-window from any working directory
+            std::string home_dir = getenv("HOME") ? getenv("HOME") : "";
+            std::string bin_dir = ".";
+            std::string argv0_str = argv[0] ? argv[0] : "";
+            size_t b_slash = argv0_str.find_last_of("/\\");
+            if (b_slash != std::string::npos) bin_dir = argv0_str.substr(0, b_slash);
+
+            std::vector<std::string> nw_candidates = {
+                "modules/loop-node-window/index.js",
+                bin_dir + "/../modules/loop-node-window/index.js",
+                "/Users/jerix/engine/modules/loop-node-window/index.js"
+            };
+            if (!home_dir.empty()) {
+                nw_candidates.insert(nw_candidates.begin() + 1, home_dir + "/.smiledev/modules/loop-node-window/index.js");
+                nw_candidates.push_back(home_dir + "/engine/modules/loop-node-window/index.js");
+                nw_candidates.push_back(home_dir + "/cokistudios.github.io/modules/loop-node-window/index.js");
+            }
+
+            std::string resolved_nw = "";
+            for (const auto& cand : nw_candidates) {
+                std::ifstream f(cand);
+                if (f.good()) {
+                    resolved_nw = cand;
+                    break;
+                }
+            }
+
+            if (!resolved_nw.empty()) {
+                std::cout << color::GREEN << "[2D/3D STAGE LAUNCH]" << color::RESET 
+                          << " Launching Universal 2D/3D Quantum Stage (" << resolved_nw << ") for " << script_path << "...\n";
+                std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"" + resolved_nw + "\" --game --script \"" + script_path + "\"";
                 system(cmd.c_str());
             } else {
 #ifdef __APPLE__
