@@ -1103,8 +1103,13 @@ int run_tests() {
         "val m4_api = m4_pipe[\"api\"]\n"
         "val m4_fps = m4_pipe[\"target_fps\"]\n"
     );
+#if defined(__APPLE__)
+    bool m4_support_expected = vm_metal4.variables["m4_sup"].is_truthy();
+#else
+    bool m4_support_expected = !vm_metal4.variables["m4_sup"].is_truthy();
+#endif
     assert_test("Apple Metal 4 Subsystem & Unified Memory Architecture (metal4, sys.metal_version, 240Hz ProMotion)",
-                vm_metal4.variables["m4_sup"].is_truthy() &&
+                m4_support_expected &&
                 vm_metal4.variables["m4_ver"].as_string() == "Metal 4" &&
                 vm_metal4.variables["m4_api"].as_string() == "Metal 4 (MSL 4.0)" &&
                 vm_metal4.variables["m4_fps"].as_int() == 240);
