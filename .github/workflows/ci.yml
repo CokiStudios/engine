@@ -21,14 +21,15 @@ jobs:
         run: |
           make -C cpp
 
-      - name: Run Looping Native Test Suite (69/69 — v1.1 / Arch 3.0A)
+      - name: Run Looping Native Test Suite (71/71 — v1.1 / Arch 3.0A)
         run: |
           ./bin/looping test
           ./bin/looping --version
           ./bin/looping --omega --version
           ./bin/looping --alpha --version
 
-      - name: Verify smiledev Package Manager CLI
+      - name: Verify smiledev Package Manager CLI (v1.1 & Alpha! 1.1A)
         run: |
           ./bin/smiledev version
+          ./bin/smiledev version --alpha
           ./bin/smiledev help

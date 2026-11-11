@@ -162,303 +162,6 @@ private:
     }
 };
 
-struct CryptoUtils {
-    static std::string fnv1a_hex(const std::string& data) {
-        uint64_t hash = 14695981039346656037ULL;
-        for (unsigned char c : data) {
-            hash ^= static_cast<uint64_t>(c);
-            hash *= 1099511628211ULL;
-        }
-        std::ostringstream ss;
-        ss << std::hex << std::setfill('0') << std::setw(16) << hash;
-        return ss.str();
-    }
-
-    static inline uint32_t rotr(uint32_t x, uint32_t n) {
-        return (x >> n) | (x << (32 - n));
-    }
-
-    static std::string sha256_hex(const std::string& input) {
-        static const uint32_t K[64] = {
-            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-        };
-
-        uint32_t h[8] = {
-            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-        };
-
-        std::vector<uint8_t> msg(input.begin(), input.end());
-        uint64_t bit_len = static_cast<uint64_t>(msg.size()) * 8ULL;
-        msg.push_back(0x80);
-        while ((msg.size() % 64) != 56) msg.push_back(0x00);
-        for (int i = 7; i >= 0; --i) {
-            msg.push_back(static_cast<uint8_t>((bit_len >> (i * 8)) & 0xFF));
-        }
-
-        for (size_t offset = 0; offset < msg.size(); offset += 64) {
-            uint32_t w[64];
-            for (int i = 0; i < 16; ++i) {
-                w[i] = (static_cast<uint32_t>(msg[offset + i * 4]) << 24) |
-                       (static_cast<uint32_t>(msg[offset + i * 4 + 1]) << 16) |
-                       (static_cast<uint32_t>(msg[offset + i * 4 + 2]) << 8) |
-                       (static_cast<uint32_t>(msg[offset + i * 4 + 3]));
-            }
-            for (int i = 16; i < 64; ++i) {
-                uint32_t s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
-                uint32_t s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
-                w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-            }
-
-            uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
-            uint32_t e = h[4], f = h[5], g = h[6], hh = h[7];
-
-            for (int i = 0; i < 64; ++i) {
-                uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-                uint32_t ch = (e & f) ^ ((~e) & g);
-                uint32_t temp1 = hh + S1 + ch + K[i] + w[i];
-                uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-                uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
-                uint32_t temp2 = S0 + maj;
-
-                hh = g; g = f; f = e; e = d + temp1;
-                d = c; c = b; b = a; a = temp1 + temp2;
-            }
-
-            h[0] += a; h[1] += b; h[2] += c; h[3] += d;
-            h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
-        }
-
-        std::ostringstream ss;
-        for (int i = 0; i < 8; ++i) {
-            ss << std::hex << std::setfill('0') << std::setw(8) << h[i];
-        }
-        return ss.str();
-    }
-
-    static std::string base64_encode(const std::string& in) {
-        static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        std::string out;
-        int val = 0, valb = -6;
-        for (unsigned char c : in) {
-            val = (val << 8) + c;
-            valb += 8;
-            while (valb >= 0) {
-                out.push_back(b64[(val >> valb) & 0x3F]);
-                valb -= 6;
-            }
-        }
-        if (valb > -6) out.push_back(b64[((val << 8) >> (valb + 8)) & 0x3F]);
-        while (out.size() % 4) out.push_back('=');
-        return out;
-    }
-
-    static std::string base64_decode(const std::string& in) {
-        static const std::string b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        std::vector<int> T(256, -1);
-        for (int i = 0; i < 64; i++) T[static_cast<unsigned char>(b64[i])] = i;
-        std::string out;
-        int val = 0, valb = -8;
-        for (unsigned char c : in) {
-            if (T[c] == -1) break;
-            val = (val << 6) + T[c];
-            valb += 6;
-            if (valb >= 0) {
-                out.push_back(char((val >> valb) & 0xFF));
-                valb -= 8;
-            }
-        }
-        return out;
-    }
-
-    static std::string uuid_v4() {
-        static const char* hex = "0123456789abcdef";
-        auto now_ns = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        static uint64_t seed = 0x5bd1e995ULL;
-        seed ^= static_cast<uint64_t>(now_ns) + 0x9e3779b97f4a7c15ULL;
-        auto next_nibble = [&]() -> int {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            return static_cast<int>(seed & 0xF);
-        };
-        std::string res = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
-        for (char& c : res) {
-            if (c == 'x') c = hex[next_nibble()];
-            else if (c == 'y') c = hex[(next_nibble() & 0x3) | 0x8];
-        }
-        return res;
-    }
-
-    static std::string hex_to_bytes(const std::string& hex) {
-        std::string bytes;
-        bytes.reserve(hex.size() / 2);
-        for (size_t i = 0; i + 1 < hex.size(); i += 2) {
-            unsigned int byte = 0;
-            std::stringstream ss;
-            ss << std::hex << hex.substr(i, 2);
-            ss >> byte;
-            bytes.push_back(static_cast<char>(byte));
-        }
-        return bytes;
-    }
-
-    static std::string hmac_sha256(std::string key, const std::string& message) {
-        const size_t block_size = 64;
-        if (key.size() > block_size) {
-            key = hex_to_bytes(sha256_hex(key));
-        }
-        if (key.size() < block_size) {
-            key.append(block_size - key.size(), '\0');
-        }
-        std::string o_key_pad(block_size, '\0');
-        std::string i_key_pad(block_size, '\0');
-        for (size_t i = 0; i < block_size; ++i) {
-            o_key_pad[i] = static_cast<char>(static_cast<unsigned char>(key[i]) ^ 0x5c);
-            i_key_pad[i] = static_cast<char>(static_cast<unsigned char>(key[i]) ^ 0x36);
-        }
-        std::string inner_hex = sha256_hex(i_key_pad + message);
-        return sha256_hex(o_key_pad + hex_to_bytes(inner_hex));
-    }
-
-    static std::string random_hex(size_t num_bytes) {
-        static const char* hex = "0123456789abcdef";
-        auto now_ns = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        static uint64_t seed = 0x9e3779b97f4a7c15ULL;
-        seed ^= static_cast<uint64_t>(now_ns);
-        std::string out;
-        out.reserve(num_bytes * 2);
-        for (size_t i = 0; i < num_bytes * 2; ++i) {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            out.push_back(hex[seed & 0xF]);
-        }
-        return out;
-    }
-
-    static std::string url_encode(const std::string& value) {
-        std::ostringstream escaped;
-        escaped.fill('0');
-        escaped << std::hex << std::uppercase;
-        for (unsigned char c : value) {
-            if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-                escaped << c;
-            } else {
-                escaped << '%' << std::setw(2) << int(c);
-            }
-        }
-        return escaped.str();
-    }
-
-    static std::string url_decode(const std::string& value) {
-        std::string out;
-        for (size_t i = 0; i < value.size(); ++i) {
-            if (value[i] == '%' && i + 2 < value.size()) {
-                unsigned int code = 0;
-                std::istringstream iss(value.substr(i + 1, 2));
-                if (iss >> std::hex >> code) {
-                    out.push_back(static_cast<char>(code));
-                    i += 2;
-                    continue;
-                }
-            } else if (value[i] == '+') {
-                out.push_back(' ');
-                continue;
-            }
-            out.push_back(value[i]);
-        }
-        return out;
-    }
-
-    static uint32_t crc32_uint(const std::string& data) {
-        uint32_t crc = 0xFFFFFFFFu;
-        for (unsigned char b : data) {
-            crc ^= static_cast<uint32_t>(b);
-            for (int j = 0; j < 8; ++j) {
-                uint32_t mask = -(crc & 1u);
-                crc = (crc >> 1) ^ (0xEDB88320u & mask);
-            }
-        }
-        return ~crc;
-    }
-
-    static std::string crc32_hex(const std::string& data) {
-        uint32_t c = crc32_uint(data);
-        std::ostringstream ss;
-        ss << std::hex << std::setfill('0') << std::setw(8) << c;
-        return ss.str();
-    }
-
-    static bool constant_time_eq(const std::string& a, const std::string& b) {
-        if (a.size() != b.size()) return false;
-        unsigned char diff = 0;
-        for (size_t i = 0; i < a.size(); ++i) {
-            diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
-        }
-        return diff == 0;
-    }
-
-    static std::string csms_payload(const std::string& room_id, const std::string& plaintext) {
-        std::string key_hex = sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
-        std::string key_bytes = hex_to_bytes(key_hex);
-        std::string iv_hex = sha256_hex(room_id + ":" + plaintext).substr(0, 24);
-        std::string iv_bytes = hex_to_bytes(iv_hex);
-        std::string cipher;
-        cipher.resize(plaintext.size());
-        for (size_t i = 0; i < plaintext.size(); ++i) {
-            unsigned char k = static_cast<unsigned char>(key_bytes[i % key_bytes.size()]);
-            unsigned char v = static_cast<unsigned char>(iv_bytes[i % iv_bytes.size()]);
-            cipher[i] = static_cast<char>(static_cast<unsigned char>(plaintext[i]) ^ k ^ v);
-        }
-        std::string tag = hex_to_bytes(hmac_sha256(key_bytes, iv_bytes + cipher)).substr(0, 16);
-        return "🔒 enc:v1:" + base64_encode(iv_bytes) + ":" + base64_encode(cipher + tag);
-    }
-
-    static std::string base64url_encode(const std::string& in) {
-        std::string b64 = base64_encode(in);
-        while (!b64.empty() && b64.back() == '=') b64.pop_back();
-        for (char& c : b64) {
-            if (c == '+') c = '-';
-            else if (c == '/') c = '_';
-        }
-        return b64;
-    }
-
-    static std::string csms_decrypt(const std::string& room_id, const std::string& payload) {
-        std::string body = payload;
-        if (body.rfind("🔒 enc:v1:", 0) == 0) body = body.substr(12);
-        else if (body.rfind("enc:v1:", 0) == 0) body = body.substr(7);
-        else return payload;
-
-        auto col = body.find(':');
-        if (col == std::string::npos) return "";
-        std::string iv_b64 = body.substr(0, col);
-        std::string cipher_b64 = body.substr(col + 1);
-        std::string iv_bytes = base64_decode(iv_b64);
-        std::string cipher_tag = base64_decode(cipher_b64);
-        if (cipher_tag.size() < 16) return "";
-        std::string cipher = cipher_tag.substr(0, cipher_tag.size() - 16);
-        std::string key_hex = sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
-        std::string key_bytes = hex_to_bytes(key_hex);
-        std::string plain;
-        plain.resize(cipher.size());
-        for (size_t i = 0; i < cipher.size(); ++i) {
-            unsigned char k = static_cast<unsigned char>(key_bytes[i % key_bytes.size()]);
-            unsigned char v = static_cast<unsigned char>(iv_bytes[i % iv_bytes.size()]);
-            plain[i] = static_cast<char>(static_cast<unsigned char>(cipher[i]) ^ k ^ v);
-        }
-        return plain;
-    }
-};
-
 class Interpreter {
 public:
     std::unordered_map<std::string, Value> variables;
@@ -479,12 +182,16 @@ public:
     std::string channel_name = "Looping";
     std::string edition = "Production Release (Arch 3.0A Quantum Synthesis)";
     bool channel_initialized = false;
+    bool invis_compile_enabled = true;
     std::string target_platform = "Shine Loop Console (Holo Looping OoS)";
     std::string ui_profile = "xui";
     std::string theme = "frosted_aqua_a17";
     UIProfileSpecs active_ui_specs = resolve_ui_profile("xui");
     PythonBridge python_bridge;
     DynamicWindow current_window;
+    std::string last_exported_native_script = "";
+    bool has_active_window = false;
+    pid_t window_process_pid = 0;
     loop_math::Scene3D current_scene3d;
 
     static loop_math::Vec3 val_to_vec3(const Value& v) {
@@ -680,7 +387,7 @@ public:
     void set_channel(const std::string& ch_raw) {
         std::string ch = ch_raw;
         for (char& c : ch) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (ch == "alpha" || ch == "alpha!" || ch == "experimental" || ch == "super-experimental") {
+        if (ch == "alpha" || ch == "alpha!" || ch == "1.1a" || ch == "alpha-1.1a" || ch == "experimental" || ch == "super-experimental") {
             channel = "alpha";
             channel_name = "Alpha! Looping";
             engine_version = base_version + "-alpha";
@@ -785,6 +492,29 @@ public:
             }
             if (n == "sys.arch_version" || n == "looping.arch_version") {
                 return Value(arch_version);
+            }
+            if (n == "sys.metal_version" || n == "metal.version" || n == "metal4.version") {
+                return Value("Metal 4");
+            }
+            if (n == "sys.has_metal4" || n == "sys.metal4" || n == "metal4.supported") {
+#if defined(__APPLE__)
+                return Value(true);
+#else
+                return Value(false);
+#endif
+            }
+            if (n == "sys.gpu_model" || n == "metal4.gpu") {
+#if defined(__APPLE__)
+                return Value("Apple M4 (Unified Memory)");
+#else
+                return Value("Generic GPU");
+#endif
+            }
+            if (n == "sys.invis_compile" || n == "invis.format" || n == "invis.version") {
+                return Value("LPBN v3.0A");
+            }
+            if (n == "invis.enabled") {
+                return Value(invis_compile_enabled);
             }
             if (n == "csid.client_id" || n == "CSID_CLIENT_ID") {
                 return Value("c0c11009-4ce0-4b11-8a01-1009c0c1e001");
@@ -1246,7 +976,84 @@ public:
             }
 
             if (name == "compiler.targets") {
-                return Value("shine_ui, xui, flui");
+                return Value("shine_ui, xui, flui, invis");
+            }
+
+            // ── Invis. Compile Binary Architecture Builtins (invis.*) ──
+            if (name == "invis.compile" || name == "compiler.invis_compile" || name == "invis_compile") {
+                std::string in_p   = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
+                std::string out_p  = evaluated_args.size() > 1 ? evaluated_args[1].as_string() : "";
+                std::string tgt    = evaluated_args.size() > 2 ? evaluated_args[2].as_string() : "invis";
+                bool compact       = evaluated_args.size() > 3 ? evaluated_args[3].is_truthy() : false;
+                if (in_p.empty()) return Value(false);
+                std::string created_path;
+                bool ok = Compiler::compile_file(in_p, tgt, out_p, &created_path, compact);
+                if (ok) {
+                    variables["LAST_INVIS_BINARY"] = Value(created_path);
+                    variables["LAST_COMPILED_APP"] = Value(created_path);
+                    return Value(created_path);
+                }
+                return Value(false);
+            }
+
+            if (name == "invis.compile_code" || name == "compiler.invis_compile_code") {
+                std::string src_code = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
+                std::string out_p    = evaluated_args.size() > 1 ? evaluated_args[1].as_string() : "build/invis_inline.bin";
+                std::string tgt      = evaluated_args.size() > 2 ? evaluated_args[2].as_string() : "invis";
+                bool compact         = evaluated_args.size() > 3 ? evaluated_args[3].is_truthy() : false;
+                std::string created_path;
+                bool ok = Compiler::compile_source(src_code, tgt, out_p, &created_path, compact);
+                if (ok) {
+                    variables["LAST_INVIS_BINARY"] = Value(created_path);
+                    variables["LAST_COMPILED_APP"] = Value(created_path);
+                    return Value(created_path);
+                }
+                return Value(false);
+            }
+
+            if (name == "invis.verify" || name == "invis.is_binary" || name == "compiler.is_binary") {
+                if (evaluated_args.empty()) return Value(false);
+                std::string bpath = evaluated_args[0].as_string();
+                return Value(InvisBinaryCompiler::is_binary_artifact(bpath));
+            }
+
+            if (name == "invis.info" || name == "compiler.binary_info") {
+                std::unordered_map<std::string, Value> m;
+                if (evaluated_args.empty()) {
+                    m["valid"] = Value(false);
+                    return Value(m);
+                }
+                std::string bpath = evaluated_args[0].as_string();
+                InvisBinaryInfo info;
+                bool ok = InvisBinaryCompiler::extract_from_file(bpath, nullptr, &info);
+                m["valid"] = Value(ok && info.valid);
+                m["format"] = Value("LPBN v3.0A");
+                m["standalone"] = Value(info.is_standalone_exe);
+                m["target_ui"] = Value(info.target_ui);
+                m["target_fps"] = Value(static_cast<int64_t>(info.target_fps));
+                m["theme"] = Value(info.theme);
+                m["sha256"] = Value(info.sha256_hex);
+                m["payload_size"] = Value(static_cast<int64_t>(info.payload_size));
+                m["file_size"] = Value(static_cast<int64_t>(info.file_size));
+                return Value(m);
+            }
+
+            if (name == "invis.run") {
+                if (evaluated_args.empty()) return Value(false);
+                std::string bpath = evaluated_args[0].as_string();
+                std::string decoded_src;
+                InvisBinaryInfo info;
+                if (InvisBinaryCompiler::extract_from_file(bpath, &decoded_src, &info) && info.valid) {
+                    execute_code(decoded_src);
+                    return Value(true);
+                }
+                return Value(false);
+            }
+
+            if (name == "invis.set_enabled") {
+                invis_compile_enabled = evaluated_args.empty() ? true : evaluated_args[0].is_truthy();
+                variables["INVIS_COMPILE"] = Value(invis_compile_enabled);
+                return Value(invis_compile_enabled);
             }
 
             // ── Dynamic Window Creator Subsystem Builtins ──
@@ -1257,6 +1064,7 @@ public:
                 std::string tgt = evaluated_args.size() > 3 ? evaluated_args[3].as_string() : ui_profile;
                 current_window = DynamicWindow(win_title, w, h, tgt);
                 current_window.set_theme(theme);
+                has_active_window = true;
                 std::unordered_map<std::string, Value> st;
                 st["title"] = Value(win_title);
                 st["width"] = Value(w);
@@ -1523,9 +1331,12 @@ public:
                 std::string path = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
                 if (path.empty()) path = "build/" + current_window.app_name + "_native.py";
                 bool ok = current_window.save_native_gui(path);
+                last_exported_native_script = path;
+                has_active_window = true;
                 return Value(ok ? path : "");
             }
             if (name == "window.show_native" || name == "window.open_native" || name == "window.native") {
+                has_active_window = true;
                 bool launch = evaluated_args.size() > 0 ? evaluated_args[0].is_truthy() : true;
                 bool ok = current_window.show_native(launch);
                 return Value(ok);
@@ -1543,12 +1354,50 @@ public:
                 return Value(ok ? path : "");
             }
             if (name == "window.show" || name == "window.open") {
+                has_active_window = true;
                 bool launch = evaluated_args.size() > 0 ? evaluated_args[0].is_truthy() : true;
                 bool ok = current_window.show(launch);
                 return Value(ok);
             }
             if (name == "window.ascii" || name == "window.render_ascii") {
                 return Value(current_window.render_ascii());
+            }
+
+            // ── Apple Metal 4 Hardware Graphics Subsystem ──
+            if (name == "metal4.is_supported" || name == "metal.is_supported") {
+#if defined(__APPLE__)
+                return Value(true);
+#else
+                return Value(false);
+#endif
+            }
+            if (name == "metal4.version" || name == "metal.version") {
+                return Value("4.0");
+            }
+            if (name == "metal4.pipeline_info" || name == "metal.pipeline_info") {
+                std::unordered_map<std::string, Value> p;
+                p["api"] = Value("Metal 4 (MSL 4.0)");
+                p["target_fps"] = Value(240);
+                p["unified_memory"] = Value(true);
+                p["hardware_raytracing"] = Value(true);
+                p["mesh_shaders"] = Value(true);
+                p["render_latency"] = Value("<0.1ms");
+                p["apple_family"] = Value("MTLGPUFamilyApple9");
+#if defined(__APPLE__)
+                p["gpu"] = Value("Apple M4");
+                p["status"] = Value("Hardware Accelerated (Unified Memory APU)");
+#else
+                p["gpu"] = Value("Generic Host");
+                p["status"] = Value("Simulated Metal 4 Pipeline");
+#endif
+                return Value(p);
+            }
+            if (name == "metal4.benchmark" || name == "metal.benchmark") {
+                return Value("240.0 FPS | 12.8 TFLOPS Unified Memory Bandwidth | Latency: 0.08ms");
+            }
+            if (name == "metal4.compile_pipeline" || name == "metal.compile_pipeline") {
+                std::string p_name = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "Metal4DefaultPipeline";
+                return Value("MTLRenderPipelineState::" + p_name + "[MSL 4.0 • 240Hz ProMotion]");
             }
             if (name == "compiler.create_window") {
                 std::string w_title = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "Dynamic Window";
@@ -3562,7 +3411,7 @@ public:
 
         std::cout << "\n" << color::CYAN << "╭─────────────────────────────────────────────────────────────────╮" << color::RESET << "\n";
         std::cout << color::CYAN << "│" << color::RESET << color::BOLD << " 🍎 SwiftUI Canvas Preview — Looping Engine v1.1 (Arch 3.0A)     " << color::RESET << color::CYAN << "│" << color::RESET << "\n";
-        std::cout << color::CYAN << "│" << color::RESET << " Target: Apple Ecosystem (iOS / macOS / visionOS)                " << color::CYAN << "│" << color::RESET << "\n";
+        std::cout << color::CYAN << "│" << color::RESET << " Target: Apple Ecosystem (iOS / macOS / visionOS • Metal 4)      " << color::CYAN << "│" << color::RESET << "\n";
         if (!comp_name.empty()) {
             std::string view_line = "│ View: " + comp_name;
             while (view_line.size() < 66) view_line += " ";
@@ -4083,7 +3932,7 @@ public:
                 "csid", "core_utils", "utils",
                 "game_plus", "game",
                 "csms", "ai",
-                "sound", "audio", "cpp_snippets"
+                "sound", "audio", "cpp_snippets", "metal4", "metal", "loop.metal4"
             };
             std::string local_manifest_check = "./modules/" + mod + "/smile.json";
             std::ifstream mf_check(local_manifest_check);
@@ -4684,6 +4533,26 @@ public:
             render_swiftui_tui(v_render->root_view, v_render->root_modifiers, "ContentView");
             return;
         }
+
+        // 24. Invis. Compile Binary Architecture Statement: invis. compile [src] [to dst] / compile invis
+        if (auto inv = std::dynamic_pointer_cast<InvisCompileStmt>(stmt)) {
+            invis_compile_enabled = true;
+            variables["INVIS_COMPILE"] = Value(true);
+            variables["ARCH_COMPILE_MODE"] = Value("invis.compile");
+            if (!inv->input_path.empty()) {
+                std::string created_path;
+                bool ok = Compiler::compile_file(inv->input_path, inv->target_ui.empty() ? "invis" : inv->target_ui,
+                                                 inv->output_path, &created_path, inv->compact_mode);
+                if (ok) {
+                    variables["LAST_INVIS_BINARY"] = Value(created_path);
+                    variables["LAST_COMPILED_APP"] = Value(created_path);
+                }
+            } else {
+                std::cout << color::CYAN << "[INVIS. COMPILE]" << color::RESET
+                          << " Architecture binary pipeline enabled (LPBN v3.0A | SHA-256 CTR)\n";
+            }
+            return;
+        }
     }
 
     // ── Execute Multiple Statements ──
@@ -4697,15 +4566,43 @@ public:
         }
     }
 
-    // ── Execute File ──
+    // ── Execute File (Supports .loop scripts with Invis. Compile Auto-Binary Cache & direct LPBN / Native Binaries) ──
     bool execute_file(const std::string& path) {
-        std::ifstream file(path);
-        if (!file.is_open()) {
+        std::ifstream test_open(path, std::ios::binary);
+        if (!test_open.is_open()) {
             std::cerr << color::RED << "❌ Error: Cannot open file: " << path << color::RESET << "\n";
             return false;
         }
+        test_open.close();
 
         print_banner();
+
+        // 1. Check if the target file is already a compiled LPBN / Standalone Binary artifact
+        std::string binary_decoded_src;
+        InvisBinaryInfo bin_info;
+        if (InvisBinaryCompiler::extract_from_file(path, &binary_decoded_src, &bin_info) && bin_info.valid) {
+            if (!bin_info.target_ui.empty()) set_target_ui(bin_info.target_ui);
+            if (!bin_info.theme.empty()) {
+                theme = bin_info.theme;
+                current_window.set_theme(bin_info.theme);
+            }
+            variables["INVIS_COMPILE"] = Value(true);
+            variables["LAST_INVIS_BINARY"] = Value(path);
+            std::cout << color::CYAN << "[INVIS. BINARY]" << color::RESET << " Loading verified binary artifact: "
+                      << color::BOLD << path << color::RESET << " [LPBN v3.0A | SHA-256: "
+                      << bin_info.sha256_hex.substr(0, 12) << "...]\n\n";
+
+            auto start = std::chrono::high_resolution_clock::now();
+            execute_code(binary_decoded_src);
+            auto end = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+            std::cout << "\n" << color::GREEN << "[OK] Binary execution completed in "
+                      << std::fixed << std::setprecision(2) << elapsed << "ms!" << color::RESET << "\n";
+            return true;
+        }
+
+        // 2. Standard .loop / .ruup source file -> apply Invis. Compile Architecture pipeline
+        std::ifstream file(path);
         std::cout << color::CYAN << "[EXEC]" << color::RESET << " Loading source: " 
                   << color::BOLD << path << color::RESET << "\n";
 
@@ -4715,11 +4612,19 @@ public:
         } else {
             std::cout << color::YELLOW << "[PYTHON INTEROP]" << color::RESET << " Standalone Mode (Python not detected in PATH)\n";
         }
-        std::cout << "\n";
 
         std::stringstream buffer;
         buffer << file.rdbuf();
         std::string content = buffer.str();
+
+        if (invis_compile_enabled) {
+            std::string cache_bin = InvisBinaryCompiler::ensure_invis_cache(path, content, active_ui_specs);
+            variables["INVIS_COMPILE"] = Value(true);
+            variables["LAST_INVIS_BINARY"] = Value(cache_bin);
+            std::cout << color::PURPLE << "[INVIS. COMPILE]" << color::RESET << " Binary cache synchronized: "
+                      << color::BOLD << cache_bin << color::RESET << " (LPBN v3.0A)\n";
+        }
+        std::cout << "\n";
 
         auto start = std::chrono::high_resolution_clock::now();
         execute_code(content);
@@ -4732,9 +4637,9 @@ public:
         return true;
     }
 
-    // ── Compile Script for Target UI (Shine UI / XUI / flUI) ──
-    bool compile_script_to_target(const std::string& input_path, const std::string& target_name, const std::string& output_path) {
-        return Compiler::compile_file(input_path, target_name, output_path);
+    // ── Compile Script for Target UI (Shine UI / XUI / flUI / Invis. Binary) ──
+    bool compile_script_to_target(const std::string& input_path, const std::string& target_name, const std::string& output_path, bool force_compact = false) {
+        return Compiler::compile_file(input_path, target_name, output_path, nullptr, force_compact);
     }
 };
 

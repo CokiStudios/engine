@@ -1132,6 +1132,38 @@ public:
             return std::make_shared<ModuleDefineStmt>("module", "1.0");
         }
 
+        // 5b. Invis. Compile Binary Architecture Directive:
+        //     invis. compile ["file.loop"] [to "out.bin"] | compile invis ["file.loop"] [to "out.bin"] | @invis_compile
+        if (s == "invis. compile" || s == "invis.compile" || s == "invis compile" ||
+            s == "compile invis" || s == "@invis_compile" || s == "@invis" ||
+            s.rfind("invis. compile ", 0) == 0 || s.rfind("invis compile ", 0) == 0 ||
+            s.rfind("compile invis ", 0) == 0 || s.rfind("@invis_compile(", 0) == 0) {
+            std::string in_p = "";
+            std::string out_p = "";
+            std::string tgt = "shine_ui";
+            if (s.rfind("@invis_compile(", 0) == 0 && s.find(')') != std::string::npos) {
+                auto args = parse_call_args(s.substr(15, s.find_last_of(')') - 15));
+                if (args.positional.size() > 0) in_p = args.positional[0];
+                if (args.positional.size() > 1) out_p = args.positional[1];
+                if (args.positional.size() > 2) tgt = args.positional[2];
+            } else {
+                std::string rest = "";
+                if (s.rfind("invis. compile ", 0) == 0) rest = trim(s.substr(15));
+                else if (s.rfind("invis compile ", 0) == 0) rest = trim(s.substr(14));
+                else if (s.rfind("compile invis ", 0) == 0) rest = trim(s.substr(14));
+                if (!rest.empty()) {
+                    size_t to_pos = rest.find(" to ");
+                    if (to_pos != std::string::npos) {
+                        in_p = trim_quotes(trim(rest.substr(0, to_pos)));
+                        out_p = trim_quotes(trim(rest.substr(to_pos + 4)));
+                    } else {
+                        in_p = trim_quotes(rest);
+                    }
+                }
+            }
+            return std::make_shared<InvisCompileStmt>(in_p, out_p, tgt, false);
+        }
+
         // 6. Target UI Compilation & Profile: target("shine_ui") / compile target "xui" / profile("flui")
         if (s.rfind("compile target ", 0) == 0 || s.rfind("compile for ", 0) == 0 ||
             s.rfind("target(", 0) == 0 || s.rfind("@target(", 0) == 0 ||

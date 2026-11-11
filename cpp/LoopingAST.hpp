@@ -619,5 +619,16 @@ public:
     SwiftUIViewRenderStmt(std::shared_ptr<SwiftUIViewNode> r) : root_view(r) {}
 };
 
+// Invis. Compile Architecture Statement: invis. compile [src] [to dst] / compile invis [src] [to dst] / @invis_compile
+class InvisCompileStmt : public Stmt {
+public:
+    std::string input_path;
+    std::string output_path;
+    std::string target_ui = "shine_ui";
+    bool compact_mode = false;
+    InvisCompileStmt(const std::string& in_p = "", const std::string& out_p = "", const std::string& tgt = "shine_ui", bool compact = false)
+        : input_path(in_p), output_path(out_p), target_ui(tgt), compact_mode(compact) {}
+};
+
 } // namespace looping
 

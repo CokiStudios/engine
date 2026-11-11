@@ -16,7 +16,7 @@ Looping se distribuye bajo tres canales oficiales seleccionables con `--channel=
 * 🧬 **`Omega Looping`** *(Release Candidate / RC)*: Candidatas a lanzamiento con congelación funcional y validación previa a producción (`v1.1-omega`).
 * 🧪 **`Alpha! Looping`** *(Super Experimental)*: Builds súper experimentales de laboratorio y funciones bleeding-edge (`v1.1-alpha`).
 
-Con el lanzamiento de **Looping v1.1** (impulsado por la arquitectura **3.0A Quantum 3D Synthesis**), Looping consolida su sintaxis expresiva (`let`, `mut`, `val`, `:=`, `fn`, `match`, `|>`, `ui.*`, `spawn.*`, `scene3d.*`, `spawn3d.*`, `math3d.*`, `physics3d.*`, `csid.*`, `csms.*`, `audio.*`, `crypto.*`, `py!`), manteniendo un rendimiento nativo en C++17 de **< 0.5 ms**, **69/69 pruebas unitarias** y cero dependencias de Node.js.
+Con el lanzamiento de **Looping v1.1** (impulsado por la arquitectura **3.0A Quantum 3D Synthesis + Invis. Compile LPBN v3.0A Binary Pipeline**), Looping consolida su sintaxis expresiva (`let`, `mut`, `val`, `:=`, `fn`, `match`, `|>`, `invis. compile`, `invis.*`, `ui.*`, `spawn.*`, `scene3d.*`, `spawn3d.*`, `math3d.*`, `physics3d.*`, `csid.*`, `csms.*`, `audio.*`, `crypto.*`, `py!`), manteniendo un rendimiento nativo en C++17 de **< 0.5 ms**, **70/70 pruebas unitarias** y cero dependencias de Node.js.
 
 Las versiones de arquitectura quedan catalogadas bajo la serie (**3.0A**, **2.8A**, **2.7A**, **2.6A**, **2.5A**, **2.0A**, **1.0A**).
 
@@ -36,20 +36,22 @@ El ejecutable nativo compilado reside directamente en el repositorio (`arm64` + 
 ### Comandos de la CLI
 | Comando | Descripción |
 | :--- | :--- |
-| `looping <archivo.loop>` | Ejecuta un archivo de código `.loop` o `.ruup` |
+| `looping <archivo.loop\|.bin>` | Ejecuta un archivo de código `.loop`, `.ruup` o binario compilado (`LPBN v3.0A`) |
+| `looping invis <archivo.loop> [-o out.bin] [--target <ui>] [--compact]` | Compila un `.loop` a un archivo binario sellado (`LPBN v3.0A` standalone o compacto `.loopb`) |
+| `looping guide [--export <ruta.md>]` | Imprime o exporta la Guía Completa de Aprendizaje de Looping Code (`LOOPING_LEARNING_GUIDE.md`) |
 | `looping --gui <archivo.loop>` | Ejecuta el script abriendo la ventana gráfica interactiva |
 | `looping --native <archivo.loop>` | Ejecuta el script sintetizando una ventana nativa del SO (sin HTML5) |
-| `looping compile <archivo.loop> --target <shine_ui\|xui\|flui\|c2> [-o out]` | Compila el script para una arquitectura de interfaz nativa |
-| `looping check <archivo.loop>` | Analizador estático recursivo de sintaxis y reporte de métricas AST en microsegundos |
-| `looping ast <archivo.loop>` | Visualiza el árbol sintáctico abstracto (AST) jerárquico completo del script |
+| `looping compile <archivo.loop> --target <shine_ui\|xui\|flui\|c2\|invis> [-o out]` | Compila el script a binario `LPBN v3.0A` para una arquitectura de interfaz nativa |
+| `looping check <archivo.loop\|.bin>` | Analizador estático recursivo de sintaxis y reporte de métricas AST en microsegundos |
+| `looping ast <archivo.loop\|.bin>` | Visualiza el árbol sintáctico abstracto (AST) jerárquico completo del script o binario |
 | `looping fmt <archivo.loop> [--write]` | Formatea y normaliza la indentación de un archivo `.loop` |
-| `looping doc [topic]` | Manual de referencia integrado (`syntax`, `math`, `collections`, `crypto`, `csv`, `datetime`, `regex`, `ui`) |
+| `looping doc [topic]` | Manual de referencia integrado (`syntax`, `math`, `collections`, `crypto`, `csv`, `datetime`, `regex`, `ui`, `invis`) |
 | `looping bench` | Ejecuta el benchmark de rendimiento de la máquina virtual nativa C++17 |
-| `looping doctor` | Verifica el estado del motor C++, perfiles de UI, criptografía e interoperabilidad Python |
+| `looping doctor` | Verifica el estado del motor C++, `Invis. Compile`, perfiles de UI, criptografía e interoperabilidad Python |
 | `looping repl` | Inicia la consola interactiva (REPL) con comandos `vars`, `funcs`, `bench`, `reset` |
 | `looping preview3d <archivo.loop>` | Renderiza la escena 3D en viewport Z-Buffer TrueColor en la terminal |
 | `looping eval "<code>"` | Evalúa una instrucción o bloque de código en línea |
-| `looping test` | Ejecuta la suite de verificación unitaria (**69/69 pruebas**) |
+| `looping test` | Ejecuta la suite de verificación unitaria (**70/70 pruebas**) |
 | `looping --channel <alpha\|omega\|prod>` | Selecciona canal (`Alpha! Looping`, `Omega Looping` RC o `Looping` Prod) |
 | `looping --version` | Muestra la versión y canal del motor nativo (`Looping v1.1 / Arch 3.0A`) |
 | `looping --help` | Despliega el menú de ayuda |

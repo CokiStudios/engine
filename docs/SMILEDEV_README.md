@@ -1,6 +1,6 @@
 # 🌟 smiledev — The Official Looping Universal Package Manager
-> **Looping v1.1 Production Release (Architecture 3.0A)** • *Coki Studios & Holo Entertainment © 2026*  
-> *Release Channels: **Looping** (Prod) • **Omega Looping** (RC) • **Alpha! Looping** (Super Experimental)*  
+> **Looping v1.1 Production Release & Alpha! 1.1A for smiledev (Architecture 3.0A)** • *Coki Studios & Holo Entertainment © 2026*  
+> *Release Channels: **Looping** (Prod v1.1) • **Omega Looping** (RC v1.1-omega) • **Alpha! 1.1A** (Super Experimental)*  
 > *Target Ecosystem: Looping Engine • Loop OS • Shine Console • macOS / Linux / POSIX*
 
 ---
@@ -27,17 +27,21 @@ Respaldado por el registro en la nube **LoopModules** (PostgreSQL / Supabase) co
 # Agregar el tap oficial de Coki Studios
 brew tap cokistudios/tap
 
-# Instalar el motor Looping y el gestor smiledev
+# Instalar el motor Looping y el gestor smiledev (Prod v1.1 / Alpha! 1.1A)
 brew install looping smiledev
+brew install cokistudios/tap/smiledev-alpha   # Canal Alpha! 1.1A
 
-# Actualizar a la versión más reciente (v1.1 / Arch 3.0A)
+# Actualizar a la versión más reciente (v1.1 / Alpha! 1.1A / Arch 3.0A)
 brew update
 brew upgrade smiledev looping
+smiledev upgrade --alpha
 ```
 
 ### 2. Vía Script de Instalación Directo (macOS / Linux)
 ```bash
 curl -fsSL https://repo.cokistudios.com/engine/install.sh | bash
+# Para instalar el canal Super Experimental Alpha! 1.1A:
+curl -fsSL https://repo.cokistudios.com/engine/install.sh | bash -s -- --alpha
 ```
 
 ### 3. Verificación de Salud con Doctor

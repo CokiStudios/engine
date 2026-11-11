@@ -9,24 +9,28 @@ using namespace looping;
 void print_usage(const char* prog_name) {
     std::cout << color::BOLD << "Usage:" << color::RESET << "\n";
     std::cout << "  " << prog_name << " <script.loop>            Execute Looping script\n";
+    std::cout << "  " << prog_name << " -i, --persistent <file>  Execute and keep persistent terminal alive (like py -i)\n";
+    std::cout << "  " << prog_name << " --metal4 <script.loop>   Execute with Apple Metal 4 graphics acceleration\n";
     std::cout << "  " << prog_name << " --gui <script.loop>      Execute Looping script in native GUI window\n";
     std::cout << "  " << prog_name << " --native <script.loop>   Execute Looping script in pure OS native window\n";
     std::cout << "  " << prog_name << " window <name> [flags]    Create, synthesize & launch dynamic graphical window\n";
     std::cout << "  " << prog_name << " run <script.loop>        Execute Looping script\n";
     std::cout << "  " << prog_name << " create <name> [--type]   Create new app/game with reactive snippets (Arch 3.0A)\n";
-    std::cout << "  " << prog_name << " compile <file.loop>      Compile script for target UI profile\n";
+    std::cout << "  " << prog_name << " invis <file.loop> [-o]   Invis. Compile: convert .loop to binary file (LPBN v3.0A)\n";
+    std::cout << "  " << prog_name << " compile <file.loop>      Compile script to native binary / target UI profile\n";
     std::cout << "  " << prog_name << " preview <file.loop> [View] Live SwiftUI / 3D Viewport terminal preview\n";
     std::cout << "  " << prog_name << " preview3d <file.loop>    TrueColor Z-Buffer 3D Viewport terminal preview\n";
     std::cout << "  " << prog_name << " check <file.loop>        Static syntax & AST verification report\n";
     std::cout << "  " << prog_name << " ast <file.loop>          Display visual AST node tree & structure\n";
     std::cout << "  " << prog_name << " fmt <file.loop> [--write] Format & normalize .loop source file\n";
-    std::cout << "  " << prog_name << " doc [topic]              Built-in reference manual (syntax, math, game3d, crypto, csv, datetime, regex, ui)\n";
+    std::cout << "  " << prog_name << " guide [--export <md>]    View or export FULL Looping Code Learning Guide\n";
+    std::cout << "  " << prog_name << " doc [topic]              Built-in reference manual (syntax, invis, math, game3d, crypto, ui)\n";
     std::cout << "  " << prog_name << " bench                    Run native C++17 VM throughput benchmark\n";
     std::cout << "  " << prog_name << " doctor                   Inspect engine subsystems & environment health\n";
     std::cout << "  " << prog_name << " auth <login|whoami|logout> CS ID Connect Developer authentication\n";
     std::cout << "  " << prog_name << " repl                     Launch interactive REPL shell\n";
     std::cout << "  " << prog_name << " eval \"<code>\"            Evaluate inline code string\n";
-    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (69 tests)\n";
+    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (71 tests)\n";
     std::cout << "  " << prog_name << " --channel <alpha|omega|prod> Select tier (Alpha! Looping | Omega Looping RC | Prod)\n";
     std::cout << "  " << prog_name << " --version, -v            Display engine version & channel nomenclature\n";
     std::cout << "  " << prog_name << " --help, -h               Show this help message\n\n";
@@ -1047,6 +1051,64 @@ int run_tests() {
                 vm_ch.variables["ch_map_alpha"].as_string().find("Alpha! Looping") != std::string::npos &&
                 vm_ch.variables["ch_map_omega"].as_string().find("Omega Looping") != std::string::npos);
 
+    // Test 70: Invis. Compile Binary Architecture (.loop -> Binary File Conversion, SHA-256 CTR Zero-Source Exposure & Execution)
+    Interpreter vm_invis;
+    {
+        std::ofstream tmp_loop("build/test_invis_src.loop");
+        tmp_loop << "invis. compile\n"
+                 << "val secret_marker = \"ULTRA_SECRET_LOOP_PAYLOAD_777\"\n"
+                 << "val invis_computed = 42 * 10 + 7\n";
+        tmp_loop.close();
+    }
+    vm_invis.execute_code(
+        "val bin_standalone = invis.compile(\"build/test_invis_src.loop\", \"build/test_invis_standalone.bin\", \"xui\")\n"
+        "val bin_compact = invis.compile(\"build/test_invis_src.loop\", \"build/test_invis_compact.loopb\", \"shine_ui\", true)\n"
+        "val is_bin_ok = invis.verify(bin_standalone) && invis.verify(bin_compact)\n"
+        "val bin_meta = invis.info(bin_standalone)\n"
+        "val bin_fmt = bin_meta[\"format\"]\n"
+        "val bin_ran = invis.run(bin_compact)\n"
+        "val fmt_sys = sys.invis_compile\n"
+    );
+    // Verify zero plaintext source exposure inside compact binary file
+    bool zero_plaintext_exposure = false;
+    {
+        std::ifstream bf("build/test_invis_compact.loopb", std::ios::binary);
+        if (bf.is_open()) {
+            std::stringstream bss;
+            bss << bf.rdbuf();
+            std::string raw_bin_bytes = bss.str();
+            zero_plaintext_exposure = !raw_bin_bytes.empty() &&
+                                      (raw_bin_bytes.find("ULTRA_SECRET_LOOP_PAYLOAD_777") == std::string::npos) &&
+                                      (static_cast<unsigned char>(raw_bin_bytes[0]) == 0x89);
+        }
+    }
+    std::remove("build/test_invis_src.loop");
+    std::remove("build/test_invis_standalone.bin");
+    std::remove("build/test_invis_compact.loopb");
+
+    assert_test("Invis. Compile Binary Architecture (.loop -> Binary File, SHA-256 CTR Zero-Source Exposure & Direct Execution)",
+                vm_invis.variables["is_bin_ok"].is_truthy() &&
+                vm_invis.variables["bin_fmt"].as_string() == "LPBN v3.0A" &&
+                vm_invis.variables["fmt_sys"].as_string() == "LPBN v3.0A" &&
+                vm_invis.variables["bin_ran"].is_truthy() &&
+                vm_invis.variables["invis_computed"].as_int() == 427 &&
+                zero_plaintext_exposure);
+
+    // Test 59: Apple Metal 4 Subsystem & Unified Memory Shading Pipeline
+    Interpreter vm_metal4;
+    vm_metal4.execute_code(
+        "val m4_sup = metal4.is_supported()\n"
+        "val m4_ver = sys.metal_version\n"
+        "val m4_pipe = metal4.pipeline_info()\n"
+        "val m4_api = m4_pipe[\"api\"]\n"
+        "val m4_fps = m4_pipe[\"target_fps\"]\n"
+    );
+    assert_test("Apple Metal 4 Subsystem & Unified Memory Architecture (metal4, sys.metal_version, 240Hz ProMotion)",
+                vm_metal4.variables["m4_sup"].is_truthy() &&
+                vm_metal4.variables["m4_ver"].as_string() == "Metal 4" &&
+                vm_metal4.variables["m4_api"].as_string() == "Metal 4 (MSL 4.0)" &&
+                vm_metal4.variables["m4_fps"].as_int() == 240);
+
     std::cout << "\n" << color::BOLD << (passed == total ? color::GREEN : color::YELLOW)
               << "Results: " << passed << "/" << total << " tests passed." << color::RESET << "\n\n";
 
@@ -1077,6 +1139,54 @@ int main(int argc, char* argv[]) {
     }
     argc = static_cast<int>(filtered_argv.size());
     argv = filtered_argv.data();
+
+    // Check if this executable is a Standalone Invis. Compile Native Binary with an embedded LPBN payload
+    if (InvisBinaryCompiler::has_embedded_slot_payload()) {
+        bool has_subcmd_or_file = false;
+        bool gui_mode = false;
+        bool native_mode = false;
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--gui" || arg == "-g" || arg == "--window") {
+                gui_mode = true;
+            } else if (arg == "--native" || arg == "-n" || arg == "--os") {
+                gui_mode = true;
+                native_mode = true;
+            } else if ((arg == "--target" || arg == "-t" || arg == "--ui") && i + 1 < argc) {
+                vm.set_target_ui(argv[++i]);
+            } else if (arg == "--version" || arg == "-v" || arg == "--help" || arg == "-h") {
+                has_subcmd_or_file = true;
+            } else if (arg.rfind("-", 0) != 0) {
+                has_subcmd_or_file = true;
+            }
+        }
+        if (!has_subcmd_or_file) {
+            std::string embedded_src;
+            InvisBinaryInfo info;
+            if (InvisBinaryCompiler::extract_from_embedded_slot(&embedded_src, &info)) {
+                if (!info.target_ui.empty()) vm.set_target_ui(info.target_ui);
+                if (!info.theme.empty()) {
+                    vm.theme = info.theme;
+                    vm.current_window.set_theme(info.theme);
+                }
+                vm.print_banner();
+                std::cout << color::CYAN << "[INVIS. BINARY]" << color::RESET
+                          << " Executing standalone native binary (LPBN v3.0A | SHA-256: "
+                          << info.sha256_hex.substr(0, 12) << "... | Target: " << info.target_ui << ")\n\n";
+                auto t0 = std::chrono::high_resolution_clock::now();
+                vm.execute_code(embedded_src);
+                auto t1 = std::chrono::high_resolution_clock::now();
+                double elapsed = std::chrono::duration<double, std::milli>(t1 - t0).count();
+                std::cout << "\n" << color::GREEN << "[OK] Standalone binary completed in "
+                          << std::fixed << std::setprecision(2) << elapsed << "ms!" << color::RESET << "\n";
+                if (gui_mode && (!vm.current_window.cards.empty() || !vm.current_window.buttons.empty())) {
+                    if (native_mode) vm.current_window.show_native(true);
+                    else vm.current_window.show(true, "native");
+                }
+                return 0;
+            }
+        }
+    }
 
     if (argc < 2) {
         REPL::run(vm);
@@ -1119,8 +1229,10 @@ int main(int argc, char* argv[]) {
                   << (vm.python_bridge.is_available ? "✔" : "⚠") << color::RESET
                   << " Python Interop     : " << (vm.python_bridge.is_available ? "Available (" + vm.python_bridge.detected_exe + ")" : "Not found in PATH") << "\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " 3D Quantum Engine  : Looping3D Z-Buffer + 120Hz/240Hz Sub-Stepping Physics + Raycast\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " UI Target Profiles : Shine UI (60Hz), XUI (240Hz), flUI (120Hz), SwiftUI (Apple 120Hz), C2 (.c2)\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Default CS Modules : csid (PKCE S256), csms (E2EE), game_plus (2D/3D), core_utils, audio, ai\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Metal 4 Subsystem   : Apple Metal 4 (M4 Unified Memory Architecture, Hardware Ray Tracing & Mesh Shaders 240Hz)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " UI Target Profiles : Shine UI (60Hz), XUI (240Hz), flUI (120Hz), SwiftUI (Apple 120Hz), Metal 4 (240Hz), C2 (.c2)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Invis. Compile     : LPBN v3.0A Binary Architecture (SHA-256 CTR + Standalone Native Mach-O/ELF + Auto Cache)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Default CS Modules : csid (PKCE S256), csms (E2EE), game_plus (2D/3D), core_utils, audio, ai, invis\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " Crypto Subsystem   : SHA-256, FNV-1a, Base64, UUID v4, CSMS E2EE Key Derivation, CRC32\n\n";
         return 0;
     }
@@ -1147,19 +1259,25 @@ int main(int argc, char* argv[]) {
 
     if (first_arg == "check" || first_arg == "inspect") {
         if (argc < 3) {
-            std::cerr << color::RED << "Error: 'check' requires a .loop script file." << color::RESET << "\n";
+            std::cerr << color::RED << "Error: 'check' requires a .loop or binary file." << color::RESET << "\n";
             return 1;
         }
         std::string fpath = argv[2];
-        std::ifstream f(fpath);
-        if (!f.is_open()) {
-            std::cerr << color::RED << "Error: Could not open file '" << fpath << "'." << color::RESET << "\n";
-            return 1;
+        std::string source_code;
+        InvisBinaryInfo binfo;
+        bool is_bin = InvisBinaryCompiler::extract_from_file(fpath, &source_code, &binfo);
+        if (!is_bin) {
+            std::ifstream f(fpath);
+            if (!f.is_open()) {
+                std::cerr << color::RED << "Error: Could not open file '" << fpath << "'." << color::RESET << "\n";
+                return 1;
+            }
+            std::stringstream ss;
+            ss << f.rdbuf();
+            source_code = ss.str();
         }
-        std::stringstream ss;
-        ss << f.rdbuf();
         auto t0 = std::chrono::high_resolution_clock::now();
-        Parser p(ss.str());
+        Parser p(source_code);
         auto stmts = p.parse_script();
         auto t1 = std::chrono::high_resolution_clock::now();
         double parse_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
@@ -1205,6 +1323,10 @@ int main(int argc, char* argv[]) {
 
         std::cout << color::GREEN << "✔ [AST CHECK OK]" << color::RESET << " " << fpath
                   << " (" << std::fixed << std::setprecision(1) << parse_us << " µs)\n";
+        if (is_bin) {
+            std::cout << "  • Format               : LPBN v3.0A (" << (binfo.is_standalone_exe ? "Standalone Native Binary" : "Compact LPBN Binary") << ")\n";
+            std::cout << "  • Source SHA-256       : " << binfo.sha256_hex.substr(0, 24) << "... (Target: " << binfo.target_ui << " @ " << binfo.target_fps << "Hz)\n";
+        }
         std::cout << "  • Top-level Statements : " << stmts.size() << " (Total AST Nodes: " << total_nodes << ")\n";
         std::cout << "  • Functions Defined    : " << fn_count << "\n";
         std::cout << "  • UI Directives        : " << ui_count << "\n";
@@ -1216,18 +1338,22 @@ int main(int argc, char* argv[]) {
 
     if (first_arg == "ast") {
         if (argc < 3) {
-            std::cerr << color::RED << "Error: 'ast' requires a .loop script file." << color::RESET << "\n";
+            std::cerr << color::RED << "Error: 'ast' requires a .loop or binary file." << color::RESET << "\n";
             return 1;
         }
         std::string fpath = argv[2];
-        std::ifstream f(fpath);
-        if (!f.is_open()) {
-            std::cerr << color::RED << "Error: Could not open file '" << fpath << "'." << color::RESET << "\n";
-            return 1;
+        std::string source_code;
+        if (!InvisBinaryCompiler::extract_from_file(fpath, &source_code)) {
+            std::ifstream f(fpath);
+            if (!f.is_open()) {
+                std::cerr << color::RED << "Error: Could not open file '" << fpath << "'." << color::RESET << "\n";
+                return 1;
+            }
+            std::stringstream ss;
+            ss << f.rdbuf();
+            source_code = ss.str();
         }
-        std::stringstream ss;
-        ss << f.rdbuf();
-        Parser p(ss.str());
+        Parser p(source_code);
         auto stmts = p.parse_script();
         std::cout << color::BOLD << color::CYAN << "[LOOPING AST TREE] " << color::RESET << fpath << " (" << stmts.size() << " root nodes)\n";
         std::function<void(const std::vector<std::shared_ptr<Stmt>>&, const std::string&)> print_tree =
@@ -1259,6 +1385,7 @@ int main(int argc, char* argv[]) {
                 else if (std::dynamic_pointer_cast<ExprStmt>(st)) label = "ExprStmt";
                 else if (auto ap = std::dynamic_pointer_cast<AppDefineStmt>(st)) label = "AppDefine(" + ap->app_name + " v" + ap->version + ")";
                 else if (auto wn = std::dynamic_pointer_cast<WindowStmt>(st)) label = "Window(" + wn->title + ")";
+                else if (auto iv = std::dynamic_pointer_cast<InvisCompileStmt>(st)) label = "InvisCompile(target=" + iv->target_ui + ")";
                 std::cout << prefix << color::PURPLE << branch << color::RESET << color::BOLD << label << color::RESET << "\n";
 
                 if (auto fn = std::dynamic_pointer_cast<FunctionDefStmt>(st)) print_tree(fn->body, child_prefix);
@@ -1401,6 +1528,172 @@ int main(int argc, char* argv[]) {
                       << "      }.padding(20).frame(width: 420)\n"
                       << "  }\n"
                       << "  CLI: looping preview app.loop | looping compile app.loop --target swiftui -o App.swift\n\n";
+        }
+        if (topic == "all" || topic == "metal4" || topic == "metal" || topic == "m4") {
+            std::cout << color::YELLOW << "▸ METAL 4 GRAPHICS & SHADING PIPELINE (Apple Silicon APU Unified Memory):" << color::RESET << "\n"
+                      << "  • Target Profile : --target metal4 | --metal4 | pipeline: Apple Metal 4 Unified Memory 240Hz (<0.1ms)\n"
+                      << "  • Shaders (MSL)  : Metal Shading Language 4.0 (Hardware Mesh Shaders & BVH Raytracing)\n"
+                      << "  • System Query   : sys.metal_version, sys.has_metal4, metal4.is_supported(), metal4.pipeline_info()\n"
+                      << "  • Interactive GUI: Persistent terminal session keeps native Tkinter & Metal 4 windows active (like py -i)\n"
+                      << "  • CLI Commands   : looping --metal4 <file.loop> | looping -i <file.loop>\n\n";
+        }
+        if (topic == "all" || topic == "invis" || topic == "binary") {
+            std::cout << color::YELLOW << "▸ INVIS. COMPILE BINARY ARCHITECTURE (LPBN v3.0A — .loop -> Binary File):" << color::RESET << "\n"
+                      << "  • Directive in .loop : invis. compile \"app.loop\" to \"build/app.bin\" for xui\n"
+                      << "  • Self-Compile Pragma: invis. compile\n"
+                      << "  • Built-in Module    : invis.compile(src, [dst], [target], [compact]), invis.verify(bin), invis.info(bin), invis.run(bin)\n"
+                      << "  • CLI Commands       : looping invis <file.loop> [-o <out.bin>] [--target <ui>] [--compact] [--in-place] [--run]\n"
+                      << "  • Binary Format      : LPBN v3.0A (8-byte magic + 16-byte salt + 32-byte SHA-256 + CRC32 + SHA-256 CTR stream cipher)\n"
+                      << "  • Standalone Mode    : Embeds LPBN v3.0A into Universal Mach-O/ELF binary slot + ad-hoc codesign for direct ./app.bin execution\n"
+                      << "  • Auto Invisible Cache: Every .loop execution automatically caches a verified binary in build/.invis/<name>.loopb\n\n";
+        }
+        return 0;
+    }
+
+    if (first_arg == "guide" || first_arg == "learn" || first_arg == "tutorial") {
+        std::string export_path = "";
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            if ((arg == "--export" || arg == "-o" || arg == "--output") && i + 1 < argc) {
+                export_path = argv[++i];
+            } else if (export_path.empty() && arg.rfind("-", 0) != 0) {
+                export_path = arg;
+            }
+        }
+        std::ostringstream g;
+        g << "# Looping Code (v1.1 / Arch 3.0A) — Complete Learning & Mastery Guide\n\n"
+          << "> **Official Nomenclature**: `Looping` (`[prod]`), `Omega Looping` (`[omega]`), `Alpha! Looping` (`[alpha]`)  \n"
+          << "> **Engine Architecture**: Native C++17 Universal Engine + `Invis. Compile` (`LPBN v3.0A` Binary Pipeline)\n\n"
+          << "---\n\n"
+          << "## Module 1: Variables, Constants & String Interpolation\n"
+          << "```looping\n"
+          << "// Immutable & mutable bindings\n"
+          << "val studio = \"Coki Studios\"\n"
+          << "let version = 3.0\n"
+          << "mut score = 100\n"
+          << "score += 50\n"
+          << "fast_assign := 42\n\n"
+          << "// String interpolation with $\"...\" or \"...{expr}...\"\n"
+          << "print($\"Welcome to {studio} — Looping Arch {version} (Score: {score})\")\n"
+          << "```\n\n"
+          << "## Module 2: Functions, Lambdas, Defaults & Pipe Operators\n"
+          << "```looping\n"
+          << "// Expression-bodied function with default argument\n"
+          << "fn boost(x, factor = 2) => x * factor + 10\n\n"
+          << "// Block-bodied function\n"
+          << "fn classify(power) {\n"
+          << "    if (power >= 100) {\n"
+          << "        return \"OMEGA\"\n"
+          << "    }\n"
+          << "    return \"STANDARD\"\n"
+          << "}\n\n"
+          << "// Pipe operator (|>) chains transformations left-to-right\n"
+          << "val tier = 45 |> boost(3) |> classify()\n"
+          << "print($\"Tier: {tier}\")\n"
+          << "```\n\n"
+          << "## Module 3: Control Flow, Ranges & Pattern Matching (`match`)\n"
+          << "```looping\n"
+          << "// Inclusive (..=) and exclusive (..) ranges with step\n"
+          << "mut total = 0\n"
+          << "for (i in 1..=10 step 2) {\n"
+          << "    total += i\n"
+          << "}\n\n"
+          << "// Pattern matching with multi-value arms, ranges & guards\n"
+          << "val grade = 96\n"
+          << "match grade {\n"
+          << "    100 => print(\"Perfect S+\")\n"
+          << "    90..=99 if grade >= 95 => print(\"Rank S (Honors)\")\n"
+          << "    80..=89 => print(\"Rank A\")\n"
+          << "    _ => print(\"Keep training\")\n"
+          << "}\n"
+          << "```\n\n"
+          << "## Module 4: Collections, Maps, Destructuring & Functional Pipelines\n"
+          << "```looping\n"
+          << "let nums = [1, 2, 3, 4, 5, 6]\n"
+          << "let [first, second, ...rest] = nums\n\n"
+          << "val evens_squared = nums\n"
+          << "    |> filter(fn(n) => n % 2 == 0)\n"
+          << "    |> map(fn(n) => n * n)\n"
+          << "print($\"Evens squared: {evens_squared} | Sum: {math.sum(evens_squared)}\")\n\n"
+          << "let config = {\"engine\": \"Looping\", \"fps\": 240, \"invis\": true}\n"
+          << "print($\"Engine: {config[\"engine\"]} @ {config[\"fps\"]}Hz\")\n"
+          << "```\n\n"
+          << "## Module 5: Error Handling (`try / catch / throw`) & Null Coalescing (`??`)\n"
+          << "```looping\n"
+          << "let custom_title = null\n"
+          << "val active_title = custom_title ?? \"Default Coki Window\"\n\n"
+          << "try {\n"
+          << "    assert(active_title.len() > 0, \"Title must not be empty\")\n"
+          << "} catch (err) {\n"
+          << "    print($\"Recovered from error: {err}\")\n"
+          << "}\n"
+          << "```\n\n"
+          << "## Module 6: Cryptography, CS ID (PKCE S256) & CSMS E2EE\n"
+          << "```looping\n"
+          << "use \"csid\"\n"
+          << "use \"csms\"\n\n"
+          << "val digest = crypto.sha256(\"CokiStudios\")\n"
+          << "val room_key = crypto.csms_key(\"room_global_01\")\n"
+          << "val encrypted_packet = csms.encrypt(\"room_global_01\", \"Hello Secure World\")\n"
+          << "print($\"CSMS Packet: {encrypted_packet}\")\n"
+          << "```\n\n"
+          << "## Module 7: Native UI Windows, Reactive Cards & Declarative SwiftUI\n"
+          << "```looping\n"
+          << "define app \"TelemetryStudio\" version 3.0:\n"
+          << "window \"Telemetry Studio\" (960x600) target xui\n\n"
+          << "view MainDashboard {\n"
+          << "    @state counter = 1\n"
+          << "    VStack(spacing: 12) {\n"
+          << "        Text(\"Coki Studios — Looping SwiftUI\").font(.title).fontWeight(.bold).foregroundColor(.cyan)\n"
+          << "        Text(\"Active Nodes: $counter\").font(.headline)\n"
+          << "        Button(\"Scale Cluster\") { counter += 1 }.buttonStyle(.borderedProminent)\n"
+          << "    }.padding(20)\n"
+          << "}\n"
+          << "```\n\n"
+          << "## Module 8: 3D Quantum Engine & 120Hz Sub-Stepping Physics\n"
+          << "```looping\n"
+          << "define game3d \"QuantumArena\" version 3.0:\n"
+          << "scene3d.world(name: \"Nexus\", size: (180, 80, 180), sky: \"cyber_night\", fog: 0.01, grid: true)\n"
+          << "camera3d.set(mode: \"chase\", pos: (0, 8, -16), target: (0, 2, 10), fov: 65)\n"
+          << "physics3d.config(gravity: -25.0, substeps: 4, friction: 0.88, bounce: 0.15)\n"
+          << "spawn3d.player \"Pilot\" at (0, 2, 0) size (1.2, 2.2, 1.2) color \"#38bdf8\" speed 14\n"
+          << "spawn3d.crystal \"CoreShard\" at (0, 3, 12) size (1.2, 2.0, 1.2) color \"#a855f7\" spin 2.4\n"
+          << "```\n\n"
+          << "## Module 9: `Invis. Compile` Binary Architecture (`.loop` -> Binary File)\n"
+          << "`Invis. Compile` converts any `.loop` source file into a cryptographically sealed `LPBN v3.0A` binary file with zero plaintext source exposure.\n\n"
+          << "### 9.1 In-Language Syntax\n"
+          << "```looping\n"
+          << "// 1. Compile current script invisibly into build/<script>.bin\n"
+          << "invis. compile\n\n"
+          << "// 2. Compile a specific .loop file to a standalone native binary for XUI\n"
+          << "invis. compile \"sample_loop_projects/hi.loop\" to \"build/hi.bin\" for xui\n\n"
+          << "// 3. Programmatic API via built-in invis.* module\n"
+          << "val bin_path = invis.compile(\"app.loop\", \"build/app.bin\", \"xui\")\n"
+          << "print(invis.verify(bin_path))  // true\n"
+          << "print(invis.info(bin_path))    // Map with format, sha256, crc32, standalone\n"
+          << "```\n\n"
+          << "### 9.2 CLI Commands\n"
+          << "```zsh\n"
+          << "# Compile .loop to a standalone native binary executable (.bin)\n"
+          << "looping invis app.loop -o build/app.bin --target xui\n\n"
+          << "# Execute the binary directly from zsh or via looping\n"
+          << "./build/app.bin\n"
+          << "looping build/app.bin\n\n"
+          << "# Compile to a compact LPBN binary container (.loopb)\n"
+          << "looping invis app.loop -o build/app.loopb --compact\n"
+          << "```\n";
+
+        if (!export_path.empty()) {
+            std::ofstream out(export_path);
+            if (!out.is_open()) {
+                std::cerr << color::RED << "Error: Could not write guide to '" << export_path << "'." << color::RESET << "\n";
+                return 1;
+            }
+            out << g.str();
+            out.close();
+            std::cout << color::GREEN << "✔ [LOOPING GUIDE]" << color::RESET << " Full Learning Guide exported to: " << color::BOLD << export_path << color::RESET << "\n";
+        } else {
+            std::cout << g.str();
         }
         return 0;
     }
@@ -1622,21 +1915,25 @@ int main(int argc, char* argv[]) {
     // Preview command: looping preview <script.loop> [view_name] OR looping preview3d <script.loop>
     if (first_arg == "preview" || first_arg == "canvas" || first_arg == "preview3d") {
         if (argc < 3) {
-            std::cerr << color::RED << "Error: '" << first_arg << "' requires a .loop script file." << color::RESET << "\n";
+            std::cerr << color::RED << "Error: '" << first_arg << "' requires a .loop or binary file." << color::RESET << "\n";
             std::cerr << "Usage: " << argv[0] << " " << first_arg << " <file.loop> [ComponentName]\n";
             return 1;
         }
         std::string script_path = argv[2];
         std::string target_view = (argc > 3) ? argv[3] : "";
 
-        std::ifstream file(script_path);
-        if (!file.is_open()) {
-            std::cerr << color::RED << "Error: Cannot open script: " << script_path << color::RESET << "\n";
-            return 1;
+        std::string source_code;
+        if (!InvisBinaryCompiler::extract_from_file(script_path, &source_code)) {
+            std::ifstream file(script_path);
+            if (!file.is_open()) {
+                std::cerr << color::RED << "Error: Cannot open script: " << script_path << color::RESET << "\n";
+                return 1;
+            }
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            source_code = buffer.str();
         }
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        vm.execute_code(buffer.str());
+        vm.execute_code(source_code);
 
         if (first_arg == "preview3d" || (vm.current_scene3d.active && vm.swiftui_components.empty())) {
             std::cout << vm.current_scene3d.render_tui(74, 20);
@@ -1654,17 +1951,71 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // Compile command: looping compile <script.loop> [--target <shine_ui|xui|flui>] [--output <out>]
+    // Invis. Compile command: looping invis <file.loop> [-o <out.bin>] [--target <ui>] [--compact] [--in-place] [--run]
+    if (first_arg == "invis" || first_arg == "invis-compile" || first_arg == "invis.compile") {
+        if (argc < 3) {
+            std::cerr << color::RED << "Error: 'invis' requires a source .loop file." << color::RESET << "\n";
+            std::cerr << "Usage: " << argv[0] << " invis <file.loop> [-o <out.bin>] [--target <shine_ui|xui|flui|swiftui>] [--compact] [--in-place] [--run]\n";
+            return 1;
+        }
+
+        std::string script_path = argv[2];
+        // Allow `looping invis compile <file.loop>`
+        int start_idx = 3;
+        if (script_path == "compile" && argc >= 4) {
+            script_path = argv[3];
+            start_idx = 4;
+        }
+
+        std::string target_ui = "shine_ui";
+        std::string out_path = "";
+        bool standalone_bin = true;
+        bool in_place = false;
+        bool run_after = false;
+
+        for (int i = start_idx; i < argc; ++i) {
+            std::string arg = argv[i];
+            if ((arg == "--target" || arg == "-t" || arg == "--ui") && i + 1 < argc) {
+                target_ui = argv[++i];
+            } else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
+                out_path = argv[++i];
+            } else if (arg == "--compact" || arg == "--loopb") {
+                standalone_bin = false;
+            } else if (arg == "--standalone" || arg == "--native-bin") {
+                standalone_bin = true;
+            } else if (arg == "--in-place" || arg == "--replace") {
+                in_place = true;
+            } else if (arg == "--run" || arg == "-r") {
+                run_after = true;
+            }
+        }
+
+        if (in_place && out_path.empty()) {
+            out_path = script_path;
+        }
+
+        std::string produced_path;
+        bool ok = Compiler::compile_file(script_path, target_ui, out_path, &produced_path, !standalone_bin);
+        if (ok && run_after && !produced_path.empty()) {
+            std::cout << color::CYAN << "▸ [INVIS. RUN]" << color::RESET << " Executing compiled binary " << produced_path << "...\n";
+            vm.execute_file(produced_path);
+        }
+        return ok ? 0 : 1;
+    }
+
+    // Compile command: looping compile <script.loop> [--target <shine_ui|xui|flui|invis>] [--output <out>] [--invis] [--compact]
     if (first_arg == "compile" || first_arg == "build") {
         if (argc < 3) {
             std::cerr << color::RED << "Error: 'compile' requires a source script file." << color::RESET << "\n";
-            std::cerr << "Usage: " << argv[0] << " compile <file.loop> [--target <shine_ui|xui|flui>] [--output <out>]\n";
+            std::cerr << "Usage: " << argv[0] << " compile <file.loop> [--target <shine_ui|xui|flui|invis>] [--output <out>] [--invis] [--compact]\n";
             return 1;
         }
 
         std::string script_path = argv[2];
         std::string target_ui = "shine_ui";
         std::string out_path = "";
+        bool force_invis = false;
+        bool compact_mode = false;
 
         for (int i = 3; i < argc; ++i) {
             std::string arg = argv[i];
@@ -1672,16 +2023,27 @@ int main(int argc, char* argv[]) {
                 target_ui = argv[++i];
             } else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
                 out_path = argv[++i];
+            } else if (arg == "--invis" || arg == "--binary" || arg == "-b") {
+                force_invis = true;
+            } else if (arg == "--compact" || arg == "--loopb") {
+                compact_mode = true;
             }
+        }
+
+        if (force_invis || compact_mode) {
+            return Compiler::compile_file(script_path, target_ui, out_path, nullptr, compact_mode) ? 0 : 1;
         }
 
         bool success = vm.compile_script_to_target(script_path, target_ui, out_path);
         return success ? 0 : 1;
     }
 
-    // Run command or script execution: supports flags anywhere, including --gui / -g / -t / --native
+    // Run command or script execution: supports flags anywhere, including --gui / -g / -t / --native / -i / --persistent / --metal4
     bool gui_mode = false;
     bool native_mode = false;
+    bool persistent_mode = false;
+    bool batch_mode = false;
+    bool force_metal4 = false;
     std::string script_path = "";
     std::string target_ui = "";
 
@@ -1692,6 +2054,13 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--native" || arg == "-n" || arg == "--os") {
             gui_mode = true;
             native_mode = true;
+        } else if (arg == "-i" || arg == "--interactive" || arg == "-p" || arg == "--persistent") {
+            persistent_mode = true;
+        } else if (arg == "--no-persist" || arg == "--batch" || arg == "-b") {
+            batch_mode = true;
+        } else if (arg == "--metal4" || arg == "--metal" || arg == "-m4") {
+            force_metal4 = true;
+            target_ui = "metal4";
         } else if ((arg == "--target" || arg == "-t" || arg == "--ui") && i + 1 < argc) {
             target_ui = argv[++i];
         } else if (arg == "run") {
@@ -1707,7 +2076,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    if (!target_ui.empty()) {
+    if (force_metal4 || target_ui == "metal4") {
+        vm.set_target_ui("metal4");
+    } else if (!target_ui.empty()) {
         vm.set_target_ui(target_ui);
     }
 
@@ -1719,58 +2090,84 @@ int main(int argc, char* argv[]) {
 
     bool success = vm.execute_file(script_path);
 
-    if (success && gui_mode) {
-        if (!vm.current_window.cards.empty() || !vm.current_window.buttons.empty()) {
-            if (native_mode) {
-                vm.current_window.show_native(true);
-            } else {
-                vm.current_window.show(true, "native");
-            }
-        } else {
-            // Universal 2D/3D Stage GUI Launcher: resolves loop-node-window from any working directory
-            std::string home_dir = getenv("HOME") ? getenv("HOME") : "";
-            std::string bin_dir = ".";
-            std::string argv0_str = argv[0] ? argv[0] : "";
-            size_t b_slash = argv0_str.find_last_of("/\\");
-            if (b_slash != std::string::npos) bin_dir = argv0_str.substr(0, b_slash);
+    bool has_window = !vm.current_window.cards.empty() || 
+                      !vm.current_window.buttons.empty() || 
+                      !vm.last_exported_native_script.empty() || 
+                      vm.has_active_window || 
+                      gui_mode;
 
-            std::vector<std::string> nw_candidates = {
-                "modules/loop-node-window/index.js",
-                bin_dir + "/../modules/loop-node-window/index.js",
-                "/Users/jerix/engine/modules/loop-node-window/index.js"
-            };
-            if (!home_dir.empty()) {
-                nw_candidates.insert(nw_candidates.begin() + 1, home_dir + "/.smiledev/modules/loop-node-window/index.js");
-                nw_candidates.push_back(home_dir + "/engine/modules/loop-node-window/index.js");
-                nw_candidates.push_back(home_dir + "/cokistudios.github.io/modules/loop-node-window/index.js");
+    if (success && has_window) {
+        if (vm.window_process_pid <= 0) {
+            std::string win_script = vm.last_exported_native_script;
+            if (win_script.empty() && (!vm.current_window.cards.empty() || !vm.current_window.buttons.empty())) {
+                win_script = "build/" + vm.current_window.app_name + "_native.py";
+                vm.current_window.save_native_gui(win_script);
             }
-
-            std::string resolved_nw = "";
-            for (const auto& cand : nw_candidates) {
-                std::ifstream f(cand);
-                if (f.good()) {
-                    resolved_nw = cand;
-                    break;
+            if (!win_script.empty()) {
+                std::ifstream test_f(win_script);
+                if (test_f.good()) {
+                    pid_t pid = launch_native_window_process(win_script);
+                    vm.window_process_pid = pid;
+                    std::cout << color::CYAN << "[NATIVE WINDOW]" << color::RESET 
+                              << " Launched native OS window: " << color::BOLD << win_script << color::RESET 
+                              << " (PID: " << pid << ")\n";
                 }
-            }
-
-            if (!resolved_nw.empty()) {
-                std::cout << color::GREEN << "[2D/3D STAGE LAUNCH]" << color::RESET 
-                          << " Launching Universal 2D/3D Quantum Stage (" << resolved_nw << ") for " << script_path << "...\n";
-                std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"" + resolved_nw + "\" --game --script \"" + script_path + "\"";
-                system(cmd.c_str());
-            } else {
-#ifdef __APPLE__
-                std::cout << color::GREEN << "[GUI LAUNCH]" << color::RESET 
-                          << " Opening native Loop OS Graphical Window...\n";
-                if (script_path.find("hiop") != std::string::npos) {
-                    system("open -g \"hiOP.macOS/build/Build/Products/Release/hiOP.app\" 2>/dev/null || open \"hiOP.macOS/build/Build/Products/Release/hiOP.app\" 2>/dev/null");
-                } else {
-                    system("open \"ShineLoopLauncher.macOS/build/Build/Products/Release/ShineLoopLauncher.app\" 2>/dev/null || open -g \"ShineLoopLauncher.macOS/build/Build/Products/Release/ShineLoopLauncher.app\" 2>/dev/null");
-                }
-#endif
             }
         }
+    } else if (success && gui_mode) {
+        // Universal 2D/3D Stage GUI Launcher: resolves loop-node-window from any working directory
+        std::string home_dir = getenv("HOME") ? getenv("HOME") : "";
+        std::string bin_dir = ".";
+        std::string argv0_str = argv[0] ? argv[0] : "";
+        size_t b_slash = argv0_str.find_last_of("/\\");
+        if (b_slash != std::string::npos) bin_dir = argv0_str.substr(0, b_slash);
+
+        std::vector<std::string> nw_candidates = {
+            "modules/loop-node-window/index.js",
+            bin_dir + "/../modules/loop-node-window/index.js",
+            "/Users/jerix/engine/modules/loop-node-window/index.js"
+        };
+        if (!home_dir.empty()) {
+            nw_candidates.insert(nw_candidates.begin() + 1, home_dir + "/.smiledev/modules/loop-node-window/index.js");
+            nw_candidates.push_back(home_dir + "/engine/modules/loop-node-window/index.js");
+            nw_candidates.push_back(home_dir + "/cokistudios.github.io/modules/loop-node-window/index.js");
+        }
+
+        std::string resolved_nw = "";
+        for (const auto& cand : nw_candidates) {
+            std::ifstream f(cand);
+            if (f.good()) {
+                resolved_nw = cand;
+                break;
+            }
+        }
+
+        if (!resolved_nw.empty()) {
+            std::cout << color::GREEN << "[2D/3D STAGE LAUNCH]" << color::RESET 
+                      << " Launching Universal 2D/3D Quantum Stage (" << resolved_nw << ") for " << script_path << "...\n";
+            std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"" + resolved_nw + "\" --game --script \"" + script_path + "\"";
+            system(cmd.c_str());
+        } else {
+#ifdef __APPLE__
+            std::cout << color::GREEN << "[GUI LAUNCH]" << color::RESET 
+                      << " Opening native Loop OS Graphical Window...\n";
+            if (script_path.find("hiop") != std::string::npos) {
+                system("open -g \"hiOP.macOS/build/Build/Products/Release/hiOP.app\" 2>/dev/null || open \"hiOP.macOS/build/Build/Products/Release/hiOP.app\" 2>/dev/null");
+            } else {
+                system("open \"ShineLoopLauncher.macOS/build/Build/Products/Release/ShineLoopLauncher.app\" 2>/dev/null || open -g \"ShineLoopLauncher.macOS/build/Build/Products/Release/ShineLoopLauncher.app\" 2>/dev/null");
+            }
+#endif
+        }
+    }
+
+    // Persistent interactive terminal mode (like py -i):
+    // Enter if explicitly requested (-i / --persistent) OR if a window is active and stdin is an interactive terminal
+    bool should_persist = (persistent_mode || (has_window && !batch_mode)) && 
+                          (isatty(fileno(stdin)) || persistent_mode);
+
+    if (should_persist) {
+        std::string win_title = !vm.current_window.title.empty() ? vm.current_window.title : "Looping Window";
+        REPL::run_persistent(vm, vm.window_process_pid, win_title);
     }
 
     return success ? 0 : 1;

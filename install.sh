@@ -22,7 +22,7 @@ while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --channel=*) CHANNEL="${1#*=}" ;;
         --channel|-c) shift || true; CHANNEL="${1:-prod}" ;;
-        --alpha) CHANNEL="alpha" ;;
+        --alpha|--alpha!|--1.1a|--1.1A) CHANNEL="alpha" ;;
         --omega|--rc) CHANNEL="omega" ;;
         --prod|--stable) CHANNEL="prod" ;;
     esac
@@ -31,28 +31,33 @@ done
 
 CHANNEL_LC="$(echo "$CHANNEL" | tr '[:upper:]' '[:lower:]')"
 case "$CHANNEL_LC" in
-    alpha|alpha!|experimental)
-        BRAND_NAME="Alpha! Looping"
+    alpha|alpha!|1.1a|alpha-1.1a|experimental|super-experimental)
+        BRAND_NAME="Alpha! SmileDev & Looping"
         TIER_LABEL="Super Experimental"
-        VERSION="1.1-alpha"
-        TAR_NAME="looping-v3.0A-darwin-universal.tar.gz"
+        VERSION="1.1A"
+        CH_KEY="alpha"
+        TAR_NAME="looping-v1.1A-darwin-universal.tar.gz"
+        TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
         ;;
-    omega|rc)
+    omega|rc|release-candidate)
         BRAND_NAME="Omega Looping"
         TIER_LABEL="Release Candidate (RC)"
         VERSION="1.1-omega"
+        CH_KEY="omega"
         TAR_NAME="looping-v1.1-darwin-universal.tar.gz"
+        TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
         ;;
     *)
         BRAND_NAME="Looping"
         TIER_LABEL="Production Release"
         VERSION="1.1"
+        CH_KEY="prod"
         TAR_NAME="looping-v1.1-darwin-universal.tar.gz"
+        TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
         ;;
 esac
 
 ARCH_VER="3.0A"
-TARBALL_SHA256="b64ef06c95a2e58d659aa177db8fe735210efe2bea07a55c68535fb9461a350e"
 PRIMARY_URL="https://repo.cokistudios.com/engine/${TAR_NAME}"
 FALLBACK_URL1="https://cokistudios.github.io/engine/${TAR_NAME}"
 FALLBACK_URL2="https://github.com/CokiStudios/engine/releases/download/v1.1/${TAR_NAME}"
@@ -135,26 +140,28 @@ else
 fi
 
 rm -rf "$TMP_DIR"
+mkdir -p "$HOME/.smiledev" 2>/dev/null || true
+echo "$CH_KEY" > "$HOME/.smiledev/channel" 2>/dev/null || true
 
 # Verify installations
 echo ""
 echo -e "${C_GREEN}═══════════════════════════════════════════════════════════════${C_RESET}"
-echo -e "${C_BOLD}🎉 ${BRAND_NAME} & SMILEDEV v$VERSION (ARCH $ARCH_VER) INSTALLED!${C_RESET}"
+echo -e "${C_BOLD}🎉 ${BRAND_NAME} v$VERSION (ARCH $ARCH_VER) INSTALLED!${C_RESET}"
 echo -e "${C_GREEN}═══════════════════════════════════════════════════════════════${C_RESET}"
 if [ -x "$TARGET_DIR/looping" ]; then
     echo -n "  • Engine:   "
-    "$TARGET_DIR/looping" --channel="$CHANNEL_LC" --version | head -n1
+    LOOPING_CHANNEL="$CH_KEY" "$TARGET_DIR/looping" --version | head -n1
 fi
 if [ -x "$TARGET_DIR/smiledev" ]; then
     echo -n "  • smiledev: "
-    "$TARGET_DIR/smiledev" version --channel="$CHANNEL_LC"
+    "$TARGET_DIR/smiledev" version --channel="$CH_KEY"
 fi
 
 echo ""
 echo -e "${C_BOLD}QUICK START:${C_RESET}"
 echo -e "  ${C_CYAN}looping${C_RESET}                        Interactive REPL (Prod v1.1 / Arch 3.0A)"
-echo -e "  ${C_CYAN}looping run <file.loop>${C_RESET}        Execute a 2D/3D .loop script"
+echo -e "  ${C_CYAN}looping run <file.loop>${C_RESET}        Execute a 2D/3D .loop script (-i for persistent)"
 echo -e "  ${C_CYAN}looping preview3d <file.loop>${C_RESET}  TrueColor Z-Buffer 3D terminal preview"
-echo -e "  ${C_CYAN}looping test${C_RESET}                   Run native test suite (69/69 tests)"
-echo -e "  ${C_CYAN}smiledev upgrade --channel=prod${C_RESET} Switch channel (prod | omega [RC] | alpha [Super Exp])"
+echo -e "  ${C_CYAN}looping test${C_RESET}                   Run native test suite (71/71 tests)"
+echo -e "  ${C_CYAN}smiledev upgrade --alpha${C_RESET}       Switch channel (prod [1.1] | omega [RC] | alpha [1.1A])"
 echo ""

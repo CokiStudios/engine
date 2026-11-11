@@ -1,10 +1,11 @@
 # ⚡ Looping Engine & smiledev
-> **Looping v1.1 — Production Release (Architecture 3.0A Quantum 3D Synthesis)**  
+> **Looping v1.1 — Production Release & Alpha! 1.1A for smiledev (Architecture 3.0A Quantum 3D Synthesis)**  
 > *The Dual Hybrid High-Performance 2D/3D Language & Game Engine by Coki Studios & Holo Entertainment*
 
 [![Release](https://img.shields.io/badge/release-v1.1%20Production-38bdf8.svg?style=flat-square)](https://github.com/CokiStudios/engine/releases/tag/v1.1)
+[![Alpha](https://img.shields.io/badge/alpha!-1.1A%20smiledev-f43f5e.svg?style=flat-square)](https://repo.cokistudios.com/engine)
 [![Architecture](https://img.shields.io/badge/arch-3.0A%20Quantum%203D-10b981.svg?style=flat-square)](https://cokistudios.github.io/developer.html)
-[![Tests](https://img.shields.io/badge/tests-69%2F69%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
+[![Tests](https://img.shields.io/badge/tests-71%2F71%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 [![License](https://img.shields.io/badge/license-MIT-f59e0b.svg?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20Universal%20%7C%20Linux%20%7C%20POSIX-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 
@@ -18,7 +19,7 @@ El ecosistema Looping se distribuye bajo **tres niveles oficiales de nomenclatur
 | :--- | :--- | :--- | :--- |
 | ⚡ **`Looping`** | **Producción (Stable)** | `--channel=prod` | Versión oficial estable de producción (**actual: `v1.1` / `Arch 3.0A`**). Lista para despliegue comercial y aplicaciones críticas. |
 | 🧬 **`Omega Looping`** | **Release Candidate (RC)** | `--channel=omega` | Builds candidatas a lanzamiento (RC) con congelación de APIs y validación QA previa a promoción a producción (`v1.1-omega`). |
-| 🧪 **`Alpha! Looping`** | **Super Experimental** | `--channel=alpha` | Builds súper experimentales de laboratorio, características bleeding-edge y subsistemas en prototipado activo (`v1.1-alpha`). |
+| 🧪 **`Alpha! 1.1A`** | **Super Experimental** | `--channel=alpha` | Builds súper experimentales de laboratorio para `smiledev` (`Alpha! 1.1A`) y `Alpha! Looping` (`v1.1-alpha`) con Metal 4, terminal persistente (`-i`) y prototipado Arch 3.0A. |
 
 ---
 
@@ -41,6 +42,7 @@ Todas las versiones de arquitectura están catalogadas bajo la serie oficial (**
 ```bash
 brew tap cokistudios/tap
 brew install looping smiledev
+brew install cokistudios/tap/smiledev-alpha   # Alpha! 1.1A (Super Experimental)
 ```
 
 ### Opción 2: Descarga de Binario Universal (Apple Silicon + Intel)
@@ -108,9 +110,9 @@ smiledev version --omega
 smiledev version --alpha
 
 # Actualizar motor según el canal deseado
-smiledev upgrade --channel=prod     # Looping v1.1 (Producción)
+smiledev upgrade --channel=prod     # Looping & smiledev v1.1 (Producción)
 smiledev upgrade --channel=omega    # Omega Looping (Release Candidate / RC)
-smiledev upgrade --channel=alpha    # Alpha! Looping (Super Experimental)
+smiledev upgrade --alpha            # Alpha! 1.1A (Super Experimental para smiledev & Looping)
 
 # Instalar módulos desde el registro
 smiledev add loop-math-3d
@@ -131,8 +133,8 @@ smiledev test
 * [`legacy/`](legacy/): Archivo histórico del prototipo original en Node.js previo a la transición a C++17.
 * [`debian/`](debian/): Metadatos de empaquetado para distribuciones Linux basadas en Debian / Ubuntu.
 * [`docs/`](docs/): Especificación formal del lenguaje, canales de nomenclatura, `smiledev` y subsistema de módulos.
-* [`Formula/`](Formula/): Fórmulas oficiales de Homebrew (`looping.rb`, `smiledev.rb`).
-* [`dist/`](dist/): Paquetes universales de lanzamiento (`v1.1` y `v3.0A`) y firmas criptográficas SHA-256.
+* [`Formula/`](Formula/): Fórmulas oficiales de Homebrew (`looping.rb`, `smiledev.rb`, `smiledev-alpha.rb`).
+* [`dist/`](dist/): Paquetes universales de lanzamiento (`v1.1`, `v1.1A` Alpha! y `v3.0A`) y firmas criptográficas SHA-256.
 
 ---
 
@@ -140,7 +142,7 @@ smiledev test
 
 | Serie / Canal | Versión | Fecha Hito | Hitos Principales |
 | :--- | :--- | :--- | :--- |
-| **Looping (Prod)** | **v1.1 / Arch 3.0A** | **09 Nov 2026** | **Producción v1.1 & Arch 3.0A**. Nomenclatura oficial (`Alpha! Looping`, `Omega Looping` RC, `Looping` Prod), Motor 3D Quantum (`Looping3D.hpp`, Z-Buffer, Raycast, 120Hz/240Hz Sub-Stepping), módulos CS integrados y **69/69 tests C++ nativos**. |
+| **Looping & smiledev (Prod / Alpha! 1.1A)** | **v1.1 / 1.1A (Arch 3.0A)** | **11 Nov 2026** | **Producción v1.1 & Alpha! 1.1A para smiledev**. Modo terminal persistente (`-i` / `--persistent`), Apple Metal 4 (`metal4.*`, `240Hz ProMotion`), canal `Alpha! 1.1A`, Motor 3D Quantum (`Looping3D.hpp`, Z-Buffer, Raycast), módulos CS integrados y **71/71 tests C++ nativos**. |
 | Producción | **v1.0.0 / Arch 2.8A** | 27 Oct 2026 | Primera versión de producción. Motor 2D Quantum, `loop-node-window` v2.0.0, 57/57 tests C++ nativos. |
 | Arquitectura | **2.8A** | 26 Oct 2026 | SwiftUI TUI, Cripto CSMS (`crc32`, `constant_time_eq`), CSV y DateTime stdlib. |
 | Arquitectura | **2.7A** | 19 Oct 2026 | Integración con Eco Hub, match multi-patrón `\|`, rangos `..=` y pipelines funcionales. |

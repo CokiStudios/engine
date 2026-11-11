@@ -15,8 +15,16 @@
 #include <iomanip>
 #include <map>
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <signal.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 namespace looping {
 
@@ -31,6 +39,303 @@ namespace color {
     inline const char* BLUE    = "\033[34m";
     inline const char* WHITE   = "\033[37m";
 }
+
+struct CryptoUtils {
+    static std::string fnv1a_hex(const std::string& data) {
+        uint64_t hash = 14695981039346656037ULL;
+        for (unsigned char c : data) {
+            hash ^= static_cast<uint64_t>(c);
+            hash *= 1099511628211ULL;
+        }
+        std::ostringstream ss;
+        ss << std::hex << std::setfill('0') << std::setw(16) << hash;
+        return ss.str();
+    }
+
+    static inline uint32_t rotr(uint32_t x, uint32_t n) {
+        return (x >> n) | (x << (32 - n));
+    }
+
+    static std::string sha256_hex(const std::string& input) {
+        static const uint32_t K[64] = {
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        };
+
+        uint32_t h[8] = {
+            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+        };
+
+        std::vector<uint8_t> msg(input.begin(), input.end());
+        uint64_t bit_len = static_cast<uint64_t>(msg.size()) * 8ULL;
+        msg.push_back(0x80);
+        while ((msg.size() % 64) != 56) msg.push_back(0x00);
+        for (int i = 7; i >= 0; --i) {
+            msg.push_back(static_cast<uint8_t>((bit_len >> (i * 8)) & 0xFF));
+        }
+
+        for (size_t offset = 0; offset < msg.size(); offset += 64) {
+            uint32_t w[64];
+            for (int i = 0; i < 16; ++i) {
+                w[i] = (static_cast<uint32_t>(msg[offset + i * 4]) << 24) |
+                       (static_cast<uint32_t>(msg[offset + i * 4 + 1]) << 16) |
+                       (static_cast<uint32_t>(msg[offset + i * 4 + 2]) << 8) |
+                       (static_cast<uint32_t>(msg[offset + i * 4 + 3]));
+            }
+            for (int i = 16; i < 64; ++i) {
+                uint32_t s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
+                uint32_t s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
+                w[i] = w[i - 16] + s0 + w[i - 7] + s1;
+            }
+
+            uint32_t a = h[0], b = h[1], c = h[2], d = h[3];
+            uint32_t e = h[4], f = h[5], g = h[6], hh = h[7];
+
+            for (int i = 0; i < 64; ++i) {
+                uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+                uint32_t ch = (e & f) ^ ((~e) & g);
+                uint32_t temp1 = hh + S1 + ch + K[i] + w[i];
+                uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+                uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+                uint32_t temp2 = S0 + maj;
+
+                hh = g; g = f; f = e; e = d + temp1;
+                d = c; c = b; b = a; a = temp1 + temp2;
+            }
+
+            h[0] += a; h[1] += b; h[2] += c; h[3] += d;
+            h[4] += e; h[5] += f; h[6] += g; h[7] += hh;
+        }
+
+        std::ostringstream ss;
+        for (int i = 0; i < 8; ++i) {
+            ss << std::hex << std::setfill('0') << std::setw(8) << h[i];
+        }
+        return ss.str();
+    }
+
+    static std::string base64_encode(const std::string& in) {
+        static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string out;
+        int val = 0, valb = -6;
+        for (unsigned char c : in) {
+            val = (val << 8) + c;
+            valb += 8;
+            while (valb >= 0) {
+                out.push_back(b64[(val >> valb) & 0x3F]);
+                valb -= 6;
+            }
+        }
+        if (valb > -6) out.push_back(b64[((val << 8) >> (valb + 8)) & 0x3F]);
+        while (out.size() % 4) out.push_back('=');
+        return out;
+    }
+
+    static std::string base64_decode(const std::string& in) {
+        static const std::string b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::vector<int> T(256, -1);
+        for (int i = 0; i < 64; i++) T[static_cast<unsigned char>(b64[i])] = i;
+        std::string out;
+        int val = 0, valb = -8;
+        for (unsigned char c : in) {
+            if (T[c] == -1) break;
+            val = (val << 6) + T[c];
+            valb += 6;
+            if (valb >= 0) {
+                out.push_back(char((val >> valb) & 0xFF));
+                valb -= 8;
+            }
+        }
+        return out;
+    }
+
+    static std::string uuid_v4() {
+        static const char* hex = "0123456789abcdef";
+        auto now_ns = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        static uint64_t seed = 0x5bd1e995ULL;
+        seed ^= static_cast<uint64_t>(now_ns) + 0x9e3779b97f4a7c15ULL;
+        auto next_nibble = [&]() -> int {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            return static_cast<int>(seed & 0xF);
+        };
+        std::string res = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx";
+        for (char& c : res) {
+            if (c == 'x') c = hex[next_nibble()];
+            else if (c == 'y') c = hex[(next_nibble() & 0x3) | 0x8];
+        }
+        return res;
+    }
+
+    static std::string hex_to_bytes(const std::string& hex) {
+        std::string bytes;
+        bytes.reserve(hex.size() / 2);
+        for (size_t i = 0; i + 1 < hex.size(); i += 2) {
+            unsigned int byte = 0;
+            std::stringstream ss;
+            ss << std::hex << hex.substr(i, 2);
+            ss >> byte;
+            bytes.push_back(static_cast<char>(byte));
+        }
+        return bytes;
+    }
+
+    static std::string hmac_sha256(std::string key, const std::string& message) {
+        const size_t block_size = 64;
+        if (key.size() > block_size) {
+            key = hex_to_bytes(sha256_hex(key));
+        }
+        if (key.size() < block_size) {
+            key.append(block_size - key.size(), '\0');
+        }
+        std::string o_key_pad(block_size, '\0');
+        std::string i_key_pad(block_size, '\0');
+        for (size_t i = 0; i < block_size; ++i) {
+            o_key_pad[i] = static_cast<char>(static_cast<unsigned char>(key[i]) ^ 0x5c);
+            i_key_pad[i] = static_cast<char>(static_cast<unsigned char>(key[i]) ^ 0x36);
+        }
+        std::string inner_hex = sha256_hex(i_key_pad + message);
+        return sha256_hex(o_key_pad + hex_to_bytes(inner_hex));
+    }
+
+    static std::string random_hex(size_t num_bytes) {
+        static const char* hex = "0123456789abcdef";
+        auto now_ns = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        static uint64_t seed = 0x9e3779b97f4a7c15ULL;
+        seed ^= static_cast<uint64_t>(now_ns);
+        std::string out;
+        out.reserve(num_bytes * 2);
+        for (size_t i = 0; i < num_bytes * 2; ++i) {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            out.push_back(hex[seed & 0xF]);
+        }
+        return out;
+    }
+
+    static std::string url_encode(const std::string& value) {
+        std::ostringstream escaped;
+        escaped.fill('0');
+        escaped << std::hex << std::uppercase;
+        for (unsigned char c : value) {
+            if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                escaped << c;
+            } else {
+                escaped << '%' << std::setw(2) << int(c);
+            }
+        }
+        return escaped.str();
+    }
+
+    static std::string url_decode(const std::string& value) {
+        std::string out;
+        for (size_t i = 0; i < value.size(); ++i) {
+            if (value[i] == '%' && i + 2 < value.size()) {
+                unsigned int code = 0;
+                std::istringstream iss(value.substr(i + 1, 2));
+                if (iss >> std::hex >> code) {
+                    out.push_back(static_cast<char>(code));
+                    i += 2;
+                    continue;
+                }
+            } else if (value[i] == '+') {
+                out.push_back(' ');
+                continue;
+            }
+            out.push_back(value[i]);
+        }
+        return out;
+    }
+
+    static uint32_t crc32_uint(const std::string& data) {
+        uint32_t crc = 0xFFFFFFFFu;
+        for (unsigned char b : data) {
+            crc ^= static_cast<uint32_t>(b);
+            for (int j = 0; j < 8; ++j) {
+                uint32_t mask = -(crc & 1u);
+                crc = (crc >> 1) ^ (0xEDB88320u & mask);
+            }
+        }
+        return ~crc;
+    }
+
+    static std::string crc32_hex(const std::string& data) {
+        uint32_t c = crc32_uint(data);
+        std::ostringstream ss;
+        ss << std::hex << std::setfill('0') << std::setw(8) << c;
+        return ss.str();
+    }
+
+    static bool constant_time_eq(const std::string& a, const std::string& b) {
+        if (a.size() != b.size()) return false;
+        unsigned char diff = 0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+        }
+        return diff == 0;
+    }
+
+    static std::string csms_payload(const std::string& room_id, const std::string& plaintext) {
+        std::string key_hex = sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+        std::string key_bytes = hex_to_bytes(key_hex);
+        std::string iv_hex = sha256_hex(room_id + ":" + plaintext).substr(0, 24);
+        std::string iv_bytes = hex_to_bytes(iv_hex);
+        std::string cipher;
+        cipher.resize(plaintext.size());
+        for (size_t i = 0; i < plaintext.size(); ++i) {
+            unsigned char k = static_cast<unsigned char>(key_bytes[i % key_bytes.size()]);
+            unsigned char v = static_cast<unsigned char>(iv_bytes[i % iv_bytes.size()]);
+            cipher[i] = static_cast<char>(static_cast<unsigned char>(plaintext[i]) ^ k ^ v);
+        }
+        std::string tag = hex_to_bytes(hmac_sha256(key_bytes, iv_bytes + cipher)).substr(0, 16);
+        return "🔒 enc:v1:" + base64_encode(iv_bytes) + ":" + base64_encode(cipher + tag);
+    }
+
+    static std::string base64url_encode(const std::string& in) {
+        std::string b64 = base64_encode(in);
+        while (!b64.empty() && b64.back() == '=') b64.pop_back();
+        for (char& c : b64) {
+            if (c == '+') c = '-';
+            else if (c == '/') c = '_';
+        }
+        return b64;
+    }
+
+    static std::string csms_decrypt(const std::string& room_id, const std::string& payload) {
+        std::string body = payload;
+        if (body.rfind("🔒 enc:v1:", 0) == 0) body = body.substr(12);
+        else if (body.rfind("enc:v1:", 0) == 0) body = body.substr(7);
+        else return payload;
+
+        auto col = body.find(':');
+        if (col == std::string::npos) return "";
+        std::string iv_b64 = body.substr(0, col);
+        std::string cipher_b64 = body.substr(col + 1);
+        std::string iv_bytes = base64_decode(iv_b64);
+        std::string cipher_tag = base64_decode(cipher_b64);
+        if (cipher_tag.size() < 16) return "";
+        std::string cipher = cipher_tag.substr(0, cipher_tag.size() - 16);
+        std::string key_hex = sha256_hex(room_id + ":CSMS_E2EE_COKI_STUDIOS_v1_SALT_FORKAR");
+        std::string key_bytes = hex_to_bytes(key_hex);
+        std::string plain;
+        plain.resize(cipher.size());
+        for (size_t i = 0; i < cipher.size(); ++i) {
+            unsigned char k = static_cast<unsigned char>(key_bytes[i % key_bytes.size()]);
+            unsigned char v = static_cast<unsigned char>(iv_bytes[i % iv_bytes.size()]);
+            plain[i] = static_cast<char>(static_cast<unsigned char>(cipher[i]) ^ k ^ v);
+        }
+        return plain;
+    }
+};
 
 // ── UI Profile Specifications for Looping Target Compilation ──
 struct UIProfileSpecs {
@@ -50,6 +355,20 @@ inline UIProfileSpecs resolve_ui_profile(const std::string& raw) {
     while (!s.empty() && (s.front() == ' ' || s.front() == '-' || s.front() == '_')) s.erase(0, 1);
     while (!s.empty() && (s.back() == ' ' || s.back() == '-' || s.back() == '_')) s.pop_back();
 
+    // 0. Invis. Compile Binary Architecture (Arch 3.0A Native Binary Pipeline)
+    if (s == "invis" || s == "invis.compile" || s == "invis_compile" || s == "inviscompile" || s == "invis. compile" || s == "binary" || s == "bin" || s == "lpbn") {
+        return {
+            "Invis. Compile Binary",
+            "invis",
+            "frosted_aqua_a17",
+            "#00f5d4",
+            "#38bdf8",
+            240,
+            "Invis. Compile LPBN v3.0A Native Binary Pipeline (SHA-256 CTR)",
+            "Standalone Native Binary & Zero-Source Exposure"
+        };
+    }
+
     // 1. XUI (Gama X / 240Hz Gaming)
     if (s == "xui" || s == "x_ui" || s == "x-ui" || s == "gama_x" || s == "gama-x" || s == "gamax") {
         return {
@@ -61,6 +380,20 @@ inline UIProfileSpecs resolve_ui_profile(const std::string& raw) {
             240,
             "Direct-to-Vulkan Ultra-Low Latency 240Hz (<0.2ms)",
             "Pro Gamer Esports HUD (High-Refresh APU)"
+        };
+    }
+
+    // 1b. Metal 4 (Apple Silicon APU Unified Memory & Hardware Raytracing 240Hz)
+    if (s == "metal4" || s == "metal_4" || s == "metal-4" || s == "m4" || s == "apple_metal4" || s == "metal") {
+        return {
+            "Metal 4",
+            "metal4",
+            "metal4_quantum_cyan",
+            "#00f5d4",
+            "#0284c7",
+            240,
+            "Apple Metal 4 Unified Memory Pipeline 240Hz (<0.1ms)",
+            "Apple Silicon APU Unified Memory & Hardware Raytracing"
         };
     }
 
@@ -87,8 +420,8 @@ inline UIProfileSpecs resolve_ui_profile(const std::string& raw) {
             "#007AFF",
             "#5856D6",
             120,
-            "Apple Metal & SwiftUI ProMotion 120Hz",
-            "Apple Declarative Canvas & Dynamic Island Layout"
+            "Apple Metal 4 & SwiftUI ProMotion 120Hz/240Hz",
+            "Apple Declarative Canvas & Dynamic Island Layout (Metal 4 Engine)"
         };
     }
 
@@ -379,6 +712,28 @@ private:
         return out;
     }
 };
+
+// Helper: cleanly spawn native window without blocking or cluttering the persistent shell
+inline pid_t launch_native_window_process(const std::string& script_path) {
+#ifdef _WIN32
+    std::string cmd = "start pythonw \"" + script_path + "\"";
+    system(cmd.c_str());
+    return 1;
+#else
+    pid_t pid = fork();
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execlp("python3", "python3", script_path.c_str(), (char*)NULL);
+        _exit(127);
+    }
+    return pid;
+#endif
+}
 
 // ── Dynamic Window Creator Subsystem ──
 // High-level programmatic and declarative dynamic graphical window builder for Loop OS
@@ -1255,6 +1610,7 @@ public:
         std::string btn_bg = "#0284c7";
         std::string btn_fg = "#ffffff";
         std::string primary_color = specs.primary_color.empty() ? "#38bdf8" : specs.primary_color;
+        std::string accent_color = (specs.accent_color.empty() || specs.accent_color == "#082f49") ? "#00f5d4" : specs.accent_color;
 
         if (specs.theme.find("aqua") != std::string::npos) {
             bg_color = "#04161f";
@@ -1268,9 +1624,14 @@ public:
             card_border = "#352466";
             btn_bg = "#7c3aed";
             primary_color = "#c084fc";
+        } else if (specs.theme.find("metal4") != std::string::npos || specs.code == "metal4") {
+            bg_color = "#070c18";
+            card_bg = "#0e182a";
+            card_border = "#1a3254";
+            btn_bg = "#0284c7";
+            primary_color = "#00f5d4";
+            accent_color = "#38bdf8";
         }
-
-        std::string accent_color = (specs.accent_color.empty() || specs.accent_color == "#082f49") ? "#00f5d4" : specs.accent_color;
 
         py << "THEME = {\n";
         py << "    'bg': '" << bg_color << "',\n";
@@ -1303,13 +1664,14 @@ public:
         py << "        self.setup_ui()\n";
         py << "        self.log(\"[Loop OS Native] Ventana '" << escape_py(title) << "' inicializada (" << specs.name << " " << specs.pipeline << ").\", 'success')\n\n";
 
+        std::string badge_label = (specs.code == "metal4") ? "Metal 4 • 240 FPS Hardware Direct" : (specs.name + " • " + std::to_string(specs.target_fps) + " FPS Direct");
         py << "    def setup_ui(self):\n";
         py << "        self.c_hdr = tk.Canvas(self, height=52, bg=THEME['card_bg'], highlightthickness=0)\n";
         py << "        self.c_hdr.pack(fill='x', side='top')\n";
         std::string t_prefix = (title.rfind("✦", 0) == 0) ? "" : "✦ ";
         py << "        self.c_hdr.create_text(20, 26, text=\"" << t_prefix << escape_py(title) << "\", anchor='w', fill=THEME['primary'], font=('Helvetica', 13, 'bold'))\n";
         py << "        self.c_hdr.create_rectangle(740, 13, 960, 39, fill=THEME['accent'], outline='', tags='hdr_badge_bg')\n";
-        py << "        self.c_hdr.create_text(850, 26, text=\"" << specs.name << " • " << specs.target_fps << " FPS Direct\", fill='#0b0f19', font=('Helvetica', 9, 'bold'), tags='hdr_badge_txt')\n";
+        py << "        self.c_hdr.create_text(850, 26, text=\"" << badge_label << "\", fill='#0b0f19', font=('Helvetica', 9, 'bold'), tags='hdr_badge_txt')\n";
         py << "        def _on_hdr_resize(e):\n";
         py << "            w = e.width\n";
         py << "            self.c_hdr.coords('hdr_badge_bg', w - 210, 13, w - 16, 39)\n";
@@ -1581,13 +1943,8 @@ public:
         std::cout << "  • Native GUI App: " << color::CYAN << py_path << color::RESET << " (Direct OS / Tkinter Native Engine)\n";
 
         if (launch_interactive) {
-#ifdef _WIN32
-            std::string open_cmd = "start pythonw \"" + py_path + "\"";
-#else
-            std::string open_cmd = "python3 \"" + py_path + "\" >/dev/null 2>&1 &";
-#endif
-            std::cout << color::CYAN << "[LAUNCH NATIVE GUI]" << color::RESET << " Launching native desktop OS window...\n";
-            system(open_cmd.c_str());
+            pid_t pid = launch_native_window_process(py_path);
+            std::cout << color::CYAN << "[LAUNCH NATIVE GUI]" << color::RESET << " Launching native desktop OS window (PID: " << pid << ")...\n";
         }
         return true;
     }
@@ -2079,15 +2436,416 @@ public:
     }
 };
 
+// ── Invis. Compile Binary Architecture (LPBN v3.0A) ──
+// Converts .loop scripts into cryptographically verified binary files & standalone native Mach-O/ELF executables
+static constexpr size_t kInvisSlotTotalSize = 131072; // 128 KB embedded binary slot in __DATA,__data
+static constexpr size_t kInvisSlotAnchorSize = 16;
+
+alignas(16) inline volatile unsigned char g_invis_binary_slot[kInvisSlotTotalSize] = {
+    0x89, 'L', 'P', 'S', 'L', 'O', 'T', 0x1A,
+    'C', 'O', 'K', 'I', '3', '0', 'A', 0x00,
+    0x00
+};
+
+struct InvisBinaryInfo {
+    bool valid = false;
+    bool is_standalone_exe = false;
+    uint16_t version = 0x0300;
+    uint16_t flags = 0;
+    uint32_t target_fps = 60;
+    std::string target_ui = "shine_ui";
+    std::string theme = "frosted_aqua_a17";
+    std::string salt;
+    std::string sha256_hex;
+    uint64_t payload_size = 0;
+    uint64_t file_size = 0;
+};
+
+class InvisBinaryCompiler {
+public:
+    static constexpr size_t kLpbnHeaderSize = 152;
+
+    static inline bool match_slot_anchor(const uint8_t* p) {
+        return (p[0]  == 0x89) && (p[1]  == 0x4C) && (p[2]  == 0x50) && (p[3]  == 0x53) &&
+               (p[4]  == 0x4C) && (p[5]  == 0x4F) && (p[6]  == 0x54) && (p[7]  == 0x1A) &&
+               (p[8]  == 0x43) && (p[9]  == 0x4F) && (p[10] == 0x4B) && (p[11] == 0x49) &&
+               (p[12] == 0x33) && (p[13] == 0x30) && (p[14] == 0x41) && (p[15] == 0x00);
+    }
+
+    static inline bool match_lpbn_magic(const uint8_t* p) {
+        return (p[0] == 0x89) && (p[1] == 0x4C) && (p[2] == 0x50) && (p[3] == 0x42) &&
+               (p[4] == 0x4E) && (p[5] == 0x0D) && (p[6] == 0x0A) && (p[7] == 0x1A);
+    }
+
+    static std::string build_canonical_source(const std::string& source_code, const UIProfileSpecs& specs) {
+        std::ostringstream out;
+        out << "compile target \"" << specs.code << "\"\n";
+        out << "set ui_profile to \"" << specs.code << "\"\n";
+        out << "set theme to \"" << specs.theme << "\"\n\n";
+
+        std::stringstream in_stream(source_code);
+        std::string cur_line;
+        while (std::getline(in_stream, cur_line)) {
+            std::string trimmed = cur_line;
+            while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) trimmed.erase(0, 1);
+            if (trimmed.rfind("#!/usr/bin/env looping", 0) == 0) continue;
+            if (trimmed.rfind("compile target ", 0) == 0 || trimmed.rfind("compile for ", 0) == 0 ||
+                trimmed.rfind("target(", 0) == 0 || trimmed.rfind("@target(", 0) == 0 ||
+                trimmed.rfind("profile(", 0) == 0 || trimmed.rfind("@profile(", 0) == 0 ||
+                trimmed.rfind("set ui_profile to", 0) == 0 || trimmed.rfind("set ui to", 0) == 0 ||
+                trimmed.rfind("set theme to", 0) == 0) {
+                out << "# [Invis. Compile Target Override]: " << trimmed << "\n";
+            } else {
+                out << cur_line << "\n";
+            }
+        }
+        return out.str();
+    }
+
+    static std::vector<uint8_t> encode_lpbn(const std::string& plain_source, const UIProfileSpecs& specs, uint16_t flags = 0x0001) {
+        std::string salt = CryptoUtils::sha256_hex("INVIS_SALT_3_0A:" + specs.code + ":" + plain_source).substr(0, 16);
+        std::string digest_hex = CryptoUtils::sha256_hex(plain_source);
+        uint64_t psize = static_cast<uint64_t>(plain_source.size());
+
+        std::vector<uint8_t> out(kLpbnHeaderSize + plain_source.size(), 0);
+        // 0..7: LPBN Magic
+        out[0] = 0x89; out[1] = 0x4C; out[2] = 0x50; out[3] = 0x42;
+        out[4] = 0x4E; out[5] = 0x0D; out[6] = 0x0A; out[7] = 0x1A;
+        // 8..9: Version 3.0A (0x0300)
+        out[8] = 0x03; out[9] = 0x00;
+        // 10..11: Flags
+        out[10] = static_cast<uint8_t>(flags & 0xFF);
+        out[11] = static_cast<uint8_t>((flags >> 8) & 0xFF);
+        // 12..15: Target FPS (uint32 LE)
+        uint32_t fps = static_cast<uint32_t>(specs.target_fps);
+        out[12] = static_cast<uint8_t>(fps & 0xFF);
+        out[13] = static_cast<uint8_t>((fps >> 8) & 0xFF);
+        out[14] = static_cast<uint8_t>((fps >> 16) & 0xFF);
+        out[15] = static_cast<uint8_t>((fps >> 24) & 0xFF);
+        // 16..31: Target UI code (16 bytes)
+        std::strncpy(reinterpret_cast<char*>(&out[16]), specs.code.c_str(), 15);
+        // 32..63: Theme code (32 bytes)
+        std::strncpy(reinterpret_cast<char*>(&out[32]), specs.theme.c_str(), 31);
+        // 64..79: Salt (16 bytes)
+        std::memcpy(&out[64], salt.data(), std::min<size_t>(16, salt.size()));
+        // 80..143: SHA-256 hex digest (64 bytes)
+        std::memcpy(&out[80], digest_hex.data(), std::min<size_t>(64, digest_hex.size()));
+        // 144..151: Payload size (uint64 LE)
+        for (int b = 0; b < 8; ++b) {
+            out[144 + b] = static_cast<uint8_t>((psize >> (b * 8)) & 0xFF);
+        }
+
+        // Encrypt payload with 256-bit SHA-256 CTR Keystream (Zero plain-text source exposure)
+        std::string key_block;
+        for (size_t i = 0; i < plain_source.size(); ++i) {
+            if (i % 32 == 0) {
+                std::string block_hash = CryptoUtils::sha256_hex(salt + ":CS_INVIS_ARCH_3_0A_KEY:" + std::to_string(i / 32));
+                key_block = CryptoUtils::hex_to_bytes(block_hash);
+            }
+            uint8_t k = static_cast<uint8_t>(key_block[i % 32]);
+            out[kLpbnHeaderSize + i] = static_cast<uint8_t>(plain_source[i]) ^ k;
+        }
+        return out;
+    }
+
+    static bool decode_lpbn(const uint8_t* data, size_t len, std::string* out_source, InvisBinaryInfo* out_info = nullptr) {
+        if (!data || len < kLpbnHeaderSize || !match_lpbn_magic(data)) return false;
+
+        InvisBinaryInfo info;
+        info.version = static_cast<uint16_t>((data[8] << 8) | data[9]);
+        info.flags = static_cast<uint16_t>(data[10] | (data[11] << 8));
+        info.target_fps = static_cast<uint32_t>(data[12]) |
+                          (static_cast<uint32_t>(data[13]) << 8) |
+                          (static_cast<uint32_t>(data[14]) << 16) |
+                          (static_cast<uint32_t>(data[15]) << 24);
+
+        char t_buf[17] = {0};
+        std::memcpy(t_buf, &data[16], 16);
+        info.target_ui = std::string(t_buf);
+
+        char th_buf[33] = {0};
+        std::memcpy(th_buf, &data[32], 32);
+        info.theme = std::string(th_buf);
+
+        info.salt = std::string(reinterpret_cast<const char*>(&data[64]), 16);
+        info.sha256_hex = std::string(reinterpret_cast<const char*>(&data[80]), 64);
+
+        uint64_t psize = 0;
+        for (int b = 0; b < 8; ++b) {
+            psize |= (static_cast<uint64_t>(data[144 + b]) << (b * 8));
+        }
+        info.payload_size = psize;
+
+        if (psize > len - kLpbnHeaderSize) return false;
+
+        std::string decrypted;
+        decrypted.resize(static_cast<size_t>(psize));
+        std::string key_block;
+        for (size_t i = 0; i < static_cast<size_t>(psize); ++i) {
+            if (i % 32 == 0) {
+                std::string block_hash = CryptoUtils::sha256_hex(info.salt + ":CS_INVIS_ARCH_3_0A_KEY:" + std::to_string(i / 32));
+                key_block = CryptoUtils::hex_to_bytes(block_hash);
+            }
+            uint8_t k = static_cast<uint8_t>(key_block[i % 32]);
+            decrypted[i] = static_cast<char>(data[kLpbnHeaderSize + i] ^ k);
+        }
+
+        std::string computed_hash = CryptoUtils::sha256_hex(decrypted);
+        if (!CryptoUtils::constant_time_eq(computed_hash, info.sha256_hex)) {
+            return false;
+        }
+
+        info.valid = true;
+        if (out_source) *out_source = decrypted;
+        if (out_info) *out_info = info;
+        return true;
+    }
+
+    static bool has_embedded_slot_payload() {
+        uint8_t hdr[8];
+        for (int i = 0; i < 8; ++i) {
+            hdr[i] = g_invis_binary_slot[kInvisSlotAnchorSize + i];
+        }
+        return match_lpbn_magic(hdr);
+    }
+
+    static bool extract_from_embedded_slot(std::string* out_source, InvisBinaryInfo* out_info = nullptr) {
+        if (!has_embedded_slot_payload()) return false;
+        size_t max_payload = kInvisSlotTotalSize - kInvisSlotAnchorSize;
+        std::vector<uint8_t> local_buf(max_payload);
+        for (size_t i = 0; i < max_payload; ++i) {
+            local_buf[i] = g_invis_binary_slot[kInvisSlotAnchorSize + i];
+        }
+        InvisBinaryInfo info;
+        bool ok = decode_lpbn(local_buf.data(), local_buf.size(), out_source, &info);
+        if (ok) {
+            info.is_standalone_exe = true;
+            if (out_info) *out_info = info;
+        }
+        return ok;
+    }
+
+    static bool extract_from_file(const std::string& path, std::string* out_source, InvisBinaryInfo* out_info = nullptr) {
+        std::ifstream f(path, std::ios::binary | std::ios::ate);
+        if (!f.is_open()) return false;
+        std::streamsize fsize = f.tellg();
+        if (fsize < static_cast<std::streamsize>(kLpbnHeaderSize)) return false;
+        f.seekg(0, std::ios::beg);
+
+        // 1. Fast check for compact LPBN binary at offset 0
+        uint8_t head8[8] = {0};
+        f.read(reinterpret_cast<char*>(head8), 8);
+        f.seekg(0, std::ios::beg);
+
+        if (match_lpbn_magic(head8)) {
+            std::vector<uint8_t> bytes(static_cast<size_t>(fsize));
+            if (!f.read(reinterpret_cast<char*>(bytes.data()), fsize)) return false;
+            InvisBinaryInfo info;
+            bool ok = decode_lpbn(bytes.data(), bytes.size(), out_source, &info);
+            if (ok) {
+                info.is_standalone_exe = false;
+                info.file_size = static_cast<uint64_t>(fsize);
+                if (out_info) *out_info = info;
+            }
+            return ok;
+        }
+
+        // 2. Check if Mach-O / ELF / PE binary containing populated g_invis_binary_slot
+        uint8_t exe_mag[4] = {0};
+        std::memcpy(exe_mag, head8, 4);
+        bool looks_like_exe =
+            (exe_mag[0] == 0xCA && exe_mag[1] == 0xFE && exe_mag[2] == 0xBA && exe_mag[3] == 0xBE) || // Fat Mach-O BE
+            (exe_mag[0] == 0xCF && exe_mag[1] == 0xFA && exe_mag[2] == 0xED && exe_mag[3] == 0xFE) || // Mach-O 64 LE
+            (exe_mag[0] == 0xFE && exe_mag[1] == 0xED && exe_mag[2] == 0xFA && exe_mag[3] == 0xCF) || // Mach-O 64 BE
+            (exe_mag[0] == 0x7F && exe_mag[1] == 'E'  && exe_mag[2] == 'L'  && exe_mag[3] == 'F')  || // ELF
+            (exe_mag[0] == 'M'  && exe_mag[1] == 'Z');                                                // PE
+        if (!looks_like_exe) return false;
+
+        std::vector<uint8_t> bytes(static_cast<size_t>(fsize));
+        if (!f.read(reinterpret_cast<char*>(bytes.data()), fsize)) return false;
+
+        for (size_t i = 0; i + kInvisSlotAnchorSize + kLpbnHeaderSize <= bytes.size(); ++i) {
+            if (bytes[i] == 0x89 && match_slot_anchor(&bytes[i])) {
+                const uint8_t* slot_payload = &bytes[i + kInvisSlotAnchorSize];
+                size_t rem = bytes.size() - (i + kInvisSlotAnchorSize);
+                if (match_lpbn_magic(slot_payload)) {
+                    InvisBinaryInfo info;
+                    if (decode_lpbn(slot_payload, rem, out_source, &info)) {
+                        info.is_standalone_exe = true;
+                        info.file_size = static_cast<uint64_t>(fsize);
+                        if (out_info) *out_info = info;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    static bool is_binary_artifact(const std::string& path) {
+        InvisBinaryInfo info;
+        return extract_from_file(path, nullptr, &info) && info.valid;
+    }
+
+    static std::string resolve_host_executable() {
+#ifdef __APPLE__
+        char exe_buf[4096];
+        uint32_t sz = sizeof(exe_buf);
+        if (_NSGetExecutablePath(exe_buf, &sz) == 0) {
+            std::ifstream f(exe_buf, std::ios::binary);
+            if (f.good()) return std::string(exe_buf);
+        }
+#elif defined(__linux__)
+        char exe_buf[4096];
+        ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
+        if (len > 0) {
+            exe_buf[len] = '\0';
+            std::ifstream f(exe_buf, std::ios::binary);
+            if (f.good()) return std::string(exe_buf);
+        }
+#endif
+        std::vector<std::string> candidates = {
+            "bin/looping",
+            "../bin/looping",
+            "../../bin/looping",
+            "/Users/jerix/cokistudios.github.io/bin/looping",
+            "/Users/jerix/engine/bin/looping",
+            "/usr/local/bin/looping"
+        };
+        for (const auto& c : candidates) {
+            std::ifstream f(c, std::ios::binary);
+            if (f.good()) return c;
+        }
+        return "";
+    }
+
+    static bool compile_to_binary(const std::string& canonical_source,
+                                  const UIProfileSpecs& specs,
+                                  const std::string& out_file,
+                                  bool force_compact = false,
+                                  bool silent = false,
+                                  InvisBinaryInfo* out_info = nullptr) {
+        size_t slash = out_file.find_last_of("/\\");
+        if (slash != std::string::npos) {
+            std::string dir = out_file.substr(0, slash);
+            if (!dir.empty()) {
+                system(("mkdir -p \"" + dir + "\"").c_str());
+            }
+        }
+
+        auto ends_with = [](const std::string& str, const std::string& suf) {
+            return str.size() >= suf.size() && str.compare(str.size() - suf.size(), suf.size(), suf) == 0;
+        };
+
+        bool wants_compact = force_compact ||
+                             ends_with(out_file, ".loopb") ||
+                             ends_with(out_file, ".lbin") ||
+                             ends_with(out_file, ".loopc");
+
+        uint16_t flags = wants_compact ? 0x0001 : 0x0003;
+        std::vector<uint8_t> lpbn_img = encode_lpbn(canonical_source, specs, flags);
+
+        bool wrote_standalone = false;
+        if (!wants_compact && (lpbn_img.size() + kInvisSlotAnchorSize <= kInvisSlotTotalSize)) {
+            std::string host_exe = resolve_host_executable();
+            if (!host_exe.empty()) {
+                std::ifstream hf(host_exe, std::ios::binary | std::ios::ate);
+                if (hf.is_open()) {
+                    std::streamsize h_sz = hf.tellg();
+                    hf.seekg(0, std::ios::beg);
+                    if (h_sz > static_cast<std::streamsize>(kInvisSlotTotalSize)) {
+                        std::vector<uint8_t> exe_bytes(static_cast<size_t>(h_sz));
+                        if (hf.read(reinterpret_cast<char*>(exe_bytes.data()), h_sz)) {
+                            size_t slots_patched = 0;
+                            for (size_t i = 0; i + kInvisSlotTotalSize <= exe_bytes.size(); ++i) {
+                                if (exe_bytes[i] == 0x89 && match_slot_anchor(&exe_bytes[i])) {
+                                    std::memset(&exe_bytes[i + kInvisSlotAnchorSize], 0, kInvisSlotTotalSize - kInvisSlotAnchorSize);
+                                    std::memcpy(&exe_bytes[i + kInvisSlotAnchorSize], lpbn_img.data(), lpbn_img.size());
+                                    slots_patched++;
+                                    i += kInvisSlotTotalSize - 1;
+                                }
+                            }
+                            if (slots_patched > 0) {
+                                // Remove existing file first to invalidate macOS kernel vnode code-signing cache
+                                std::remove(out_file.c_str());
+                                std::ofstream out(out_file, std::ios::binary);
+                                if (out.is_open()) {
+                                    out.write(reinterpret_cast<const char*>(exe_bytes.data()), static_cast<std::streamsize>(exe_bytes.size()));
+                                    out.close();
+                                    chmod(out_file.c_str(), 0755);
+#ifdef __APPLE__
+                                    std::string sign_cmd = "codesign --force --sign - \"" + out_file + "\" >/dev/null 2>&1";
+                                    system(sign_cmd.c_str());
+#endif
+                                    wrote_standalone = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!wrote_standalone) {
+            std::remove(out_file.c_str());
+            std::ofstream out(out_file, std::ios::binary);
+            if (!out.is_open()) {
+                if (!silent) {
+                    std::cerr << "\033[31m❌ Error: Cannot write binary target to: " << out_file << "\033[0m\n";
+                }
+                return false;
+            }
+            out.write(reinterpret_cast<const char*>(lpbn_img.data()), static_cast<std::streamsize>(lpbn_img.size()));
+            out.close();
+            chmod(out_file.c_str(), 0755);
+        }
+
+        if (out_info) {
+            decode_lpbn(lpbn_img.data(), lpbn_img.size(), nullptr, out_info);
+            out_info->is_standalone_exe = wrote_standalone;
+        }
+        return true;
+    }
+
+    static std::string ensure_invis_cache(const std::string& script_path, const std::string& raw_source, const UIProfileSpecs& specs) {
+        std::string base = script_path;
+        size_t sl = base.find_last_of("/\\");
+        if (sl != std::string::npos) base = base.substr(sl + 1);
+        size_t dot = base.find_last_of('.');
+        if (dot != std::string::npos) base = base.substr(0, dot);
+        if (base.empty()) base = "script";
+
+        std::string clean_name;
+        for (char c : base) {
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') clean_name += c;
+            else clean_name += '_';
+        }
+
+        std::string cache_path = "build/.invis/" + clean_name + ".loopb";
+        std::string canonical = build_canonical_source(raw_source, specs);
+        std::string expected_sha = CryptoUtils::sha256_hex(canonical);
+
+        InvisBinaryInfo existing_info;
+        if (extract_from_file(cache_path, nullptr, &existing_info) && existing_info.valid &&
+            existing_info.sha256_hex == expected_sha) {
+            return cache_path;
+        }
+
+        compile_to_binary(canonical, specs, cache_path, /*force_compact=*/true, /*silent=*/true, nullptr);
+        return cache_path;
+    }
+};
+
 // ── Looping Compiler Core ──
-// Provides static and dynamic compilation of Looping code to executable artifacts
+// Provides static and dynamic compilation of Looping code to executable binary artifacts
 class Compiler {
 public:
-    // Compiles raw source code string into target UI profile artifact
+    // Compiles raw source code string into target UI profile binary artifact (via Invis. Compile LPBN v3.0A)
     static bool compile_source(const std::string& source_code, 
                                const std::string& target_name, 
                                const std::string& output_path,
-                               std::string* out_created_path = nullptr) {
+                               std::string* out_created_path = nullptr,
+                               bool force_compact = false) {
         UIProfileSpecs specs = resolve_ui_profile(target_name);
 
         std::string out_file = output_path;
@@ -2140,46 +2898,28 @@ public:
             system(mkdir_cmd.c_str());
         }
 
-        std::ofstream out(out_file);
-        if (!out.is_open()) {
-            std::cerr << "\033[31m❌ Error: Cannot write compiled target to: " << out_file << "\033[0m\n";
-            return false;
-        }
+        std::string canonical_source = InvisBinaryCompiler::build_canonical_source(source_code, specs);
 
-        out << "#!/usr/bin/env looping\n";
-        out << "# ═══════════════════════════════════════════════════════════════\n";
-        out << "# 🚀 COMPILED DYNAMIC LOOPING ARTIFACT — " << specs.name << "\n";
-        out << "# System UI: " << specs.name << " [" << specs.code << "]\n";
-        out << "# Hardware Refresh: " << specs.pipeline << " (" << specs.target_fps << " FPS)\n";
-        out << "# Layout Mode: " << specs.layout_mode << "\n";
-        out << "# Shader Palette: " << specs.theme << " (" << specs.primary_color << ")\n";
-        out << "# Dynamic Looping Engine v1.1 (Arch 3.0A Quantum Synthesis & Coki Studios Ecosystem)\n";
-        out << "# ═══════════════════════════════════════════════════════════════\n\n";
-        out << "compile target \"" << specs.code << "\"\n";
-        out << "set ui_profile to \"" << specs.code << "\"\n";
-        out << "set theme to \"" << specs.theme << "\"\n\n";
+        // Check if caller explicitly requested a plain-text .loop script (and NOT invis target)
+        bool wants_plain_loop = (specs.code != "invis") &&
+                                ((out_file.size() >= 5 && out_file.substr(out_file.size() - 5) == ".loop") ||
+                                 (out_file.size() >= 5 && out_file.substr(out_file.size() - 5) == ".ruup"));
 
-        // Filter source code to avoid duplicate target declarations
-        std::stringstream in_stream(source_code);
-        std::string cur_line;
-        while (std::getline(in_stream, cur_line)) {
-            std::string trimmed = cur_line;
-            while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) trimmed.erase(0, 1);
-            if (trimmed.rfind("compile target ", 0) == 0 || trimmed.rfind("compile for ", 0) == 0 ||
-                trimmed.rfind("target(", 0) == 0 || trimmed.rfind("@target(", 0) == 0 ||
-                trimmed.rfind("profile(", 0) == 0 || trimmed.rfind("@profile(", 0) == 0 ||
-                trimmed.rfind("set ui_profile to", 0) == 0 || trimmed.rfind("set ui to", 0) == 0 ||
-                trimmed.rfind("set theme to", 0) == 0) {
-                out << "    # [Compiled Target Override]: " << trimmed << "\n";
-            } else {
-                out << cur_line << "\n";
+        InvisBinaryInfo bin_info;
+        if (wants_plain_loop) {
+            std::ofstream out(out_file);
+            if (!out.is_open()) {
+                std::cerr << "\033[31m❌ Error: Cannot write compiled target to: " << out_file << "\033[0m\n";
+                return false;
+            }
+            out << "#!/usr/bin/env looping\n" << canonical_source;
+            out.close();
+            chmod(out_file.c_str(), 0755);
+        } else {
+            if (!InvisBinaryCompiler::compile_to_binary(canonical_source, specs, out_file, force_compact, /*silent=*/false, &bin_info)) {
+                return false;
             }
         }
-        out.close();
-
-        // Make executable
-        std::string chmod_cmd = "chmod +x \"" + out_file + "\"";
-        system(chmod_cmd.c_str());
 
         // Packaging for Component 2 (.c2) bundles
         if (specs.code == "c2" || (out_file.size() >= 3 && out_file.substr(out_file.size() - 3) == ".c2")) {
@@ -2211,7 +2951,8 @@ public:
                << "  \"target_fps\": " << specs.target_fps << ",\n"
                << "  \"theme\": \"" << specs.theme << "\",\n"
                << "  \"primary_color\": \"" << specs.primary_color << "\",\n"
-               << "  \"entrypoint\": \"source.loop\"\n"
+               << "  \"entrypoint\": \"source.loop\",\n"
+               << "  \"binary_entrypoint\": \"binary.loopb\"\n"
                << "}\n";
             mf.close();
 
@@ -2235,11 +2976,15 @@ public:
                << "}\n";
             ly.close();
 
-            // 4. Source
-            system(("cp \"" + abs_out_file + "\" \"" + tmp_dir + "/source.loop\"").c_str());
+            // 4. Source & Invis. Binary
+            {
+                std::ofstream sf(tmp_dir + "/source.loop");
+                sf << canonical_source;
+            }
+            InvisBinaryCompiler::compile_to_binary(canonical_source, specs, tmp_dir + "/binary.loopb", /*force_compact=*/true, /*silent=*/true);
 
             // 5. Signature
-            std::string sig_cmd = "(cd \"" + tmp_dir + "\" && shasum -a 256 manifest.json tokens.json layout.json source.loop > signature.sha256)";
+            std::string sig_cmd = "(cd \"" + tmp_dir + "\" && shasum -a 256 manifest.json tokens.json layout.json source.loop binary.loopb > signature.sha256)";
             system(sig_cmd.c_str());
 
             // 6. Zip into .c2 (Remove pre-existing file so zip creates a clean new archive)
@@ -2252,26 +2997,40 @@ public:
             *out_created_path = out_file;
         }
 
-        std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m Dynamic target artifact compiled to: " 
-                  << "\033[1m" << out_file << "\033[0m [" << specs.name << " / " << specs.pipeline << "]\n";
+        if (!wants_plain_loop) {
+            std::cout << "\033[32m✔ [INVIS. COMPILE SUCCESS]\033[0m Binary artifact compiled to: "
+                      << "\033[1m" << out_file << "\033[0m ["
+                      << (bin_info.is_standalone_exe ? "Standalone Native Binary / LPBN v3.0A" : "LPBN v3.0A Compact Binary")
+                      << " | SHA-256: " << (bin_info.sha256_hex.size() >= 12 ? bin_info.sha256_hex.substr(0, 12) : bin_info.sha256_hex)
+                      << "... | " << specs.name << "]\n";
+        } else {
+            std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m Dynamic target artifact compiled to: " 
+                      << "\033[1m" << out_file << "\033[0m [" << specs.name << " / " << specs.pipeline << "]\n";
+        }
 
         return true;
     }
 
-    // Compiles a file to a target artifact
+    // Compiles a file to a target binary artifact
     static bool compile_file(const std::string& input_path, 
                              const std::string& target_name, 
                              const std::string& output_path,
-                             std::string* out_created_path = nullptr) {
-        std::ifstream file(input_path);
-        if (!file.is_open()) {
-            std::cerr << "\033[31m❌ Error: Cannot open input file: " << input_path << "\033[0m\n";
-            return false;
+                             std::string* out_created_path = nullptr,
+                             bool force_compact = false) {
+        std::string source_code;
+        InvisBinaryInfo existing_bin;
+        if (InvisBinaryCompiler::extract_from_file(input_path, &source_code, &existing_bin) && existing_bin.valid) {
+            // Input is already a binary file; re-target or re-emit
+        } else {
+            std::ifstream file(input_path);
+            if (!file.is_open()) {
+                std::cerr << "\033[31m❌ Error: Cannot open input file: " << input_path << "\033[0m\n";
+                return false;
+            }
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            source_code = buffer.str();
         }
-
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string source_code = buffer.str();
 
         std::string out_file = output_path;
         if (out_file.empty()) {
@@ -2281,10 +3040,14 @@ public:
             size_t dot = base_name.find_last_of('.');
             if (dot != std::string::npos) base_name = base_name.substr(0, dot);
             UIProfileSpecs specs = resolve_ui_profile(target_name);
-            out_file = "build/" + base_name + "_" + specs.code;
+            if (specs.code == "invis") {
+                out_file = "build/" + base_name + (force_compact ? ".loopb" : ".bin");
+            } else {
+                out_file = "build/" + base_name + "_" + specs.code;
+            }
         }
 
-        return compile_source(source_code, target_name, out_file, out_created_path);
+        return compile_source(source_code, target_name, out_file, out_created_path, force_compact);
     }
 
     // Compiles a DynamicProgram object
@@ -2591,12 +3354,26 @@ public:
         return prog;
     }
 
-    // Runs an executable artifact or script
+    // Runs an executable artifact or script (supports Standalone Native Binary, LPBN Compact Binary, and .loop scripts)
     static bool run_artifact(const std::string& path) {
         std::cout << "\033[36m[LAUNCHER]\033[0m Executing artifact: \033[1m" << path << "\033[0m\n";
+        std::string host_exe = InvisBinaryCompiler::resolve_host_executable();
+        if (host_exe.empty()) host_exe = "looping";
+
+        InvisBinaryInfo info;
+        if (InvisBinaryCompiler::extract_from_file(path, nullptr, &info) && info.valid) {
+            if (info.is_standalone_exe) {
+                std::string cmd = (path.rfind("./", 0) == 0 || path.front() == '/') ? ("\"" + path + "\"") : ("./\"" + path + "\"");
+                return (system(cmd.c_str()) == 0);
+            } else {
+                std::string cmd = "\"" + host_exe + "\" \"" + path + "\"";
+                return (system(cmd.c_str()) == 0);
+            }
+        }
+
         std::string cmd;
         if (path.find(".loop") != std::string::npos || path.find(".ruup") != std::string::npos) {
-            cmd = "looping \"" + path + "\"";
+            cmd = "\"" + host_exe + "\" \"" + path + "\"";
         } else if (path.rfind("./", 0) == 0 || path.front() == '/') {
             cmd = "\"" + path + "\"";
         } else {

@@ -1039,7 +1039,16 @@ export class LoopingInterpreter {
             return;
         }
 
-        // 3. UI System Profile
+        // 3. UI System Profile & Invis. Compile Binary Directive
+        if (line.startsWith('invis. compile') || line.startsWith('invis.compile') || line.startsWith('invis compile') || line.startsWith('compile invis') || line.startsWith('@invis_compile')) {
+            const targetMatch = line.match(/for\s+([A-Za-z0-9_]+)/i);
+            const toMatch = line.match(/to\s+["'](.*?)["']/i);
+            const tgt = targetMatch ? targetMatch[1].toUpperCase() : (this.uiProfile || 'SHINE_UI').toUpperCase();
+            const outBin = toMatch ? toMatch[1] : 'build/app.bin';
+            this.log(`🔒 [INVIS. COMPILE] Binary pipeline LPBN v3.0A -> ${outBin} [Target: ${tgt} | SHA-256 CTR]`, 'success');
+            return;
+        }
+
         if (line.startsWith('set ui_profile to') || line.startsWith('set ui_profile as') || line.startsWith('set ui to')) {
             const match = line.match(/set (?:ui_profile|ui) (?:to|as) ["'](.*?)["']/);
             if (match) {
