@@ -1114,6 +1114,143 @@ int run_tests() {
                 vm_metal4.variables["m4_api"].as_string() == "Metal 4 (MSL 4.0)" &&
                 vm_metal4.variables["m4_fps"].as_int() == 240);
 
+    // Test 60: zbash-utils Library & !exec Terminal Command Execution
+    Interpreter vm_zbash;
+    vm_zbash.execute_code(
+        "mut blocked_without_import = false\n"
+        "try {\n"
+        "    !exec printf 'SHOULD_NOT_RUN'\n"
+        "} catch (err) {\n"
+        "    blocked_without_import = true\n"
+        "}\n"
+        "import zbash-utils\n"
+        "!exec printf 'ADB_TEST_OK'\n"
+        "val code1 = zbash_last_code\n"
+        "val out1 = zbash_last_output\n"
+        "val tag = \"RIVA_OK\"\n"
+        "!exec printf '{tag}'; printf '_DONE'\n"
+        "val out2 = zbash_last_output\n"
+        "!exec (exit 42)\n"
+        "val code_nz = zbash_last_code\n"
+        "val cap_out = zbash.exec(\"printf 'CAP_OK'\")\n"
+        "val has_sh = zbash.has(\"sh\")\n"
+    );
+    assert_test("zbash-utils Library & !exec One-Line Terminal Execution",
+                vm_zbash.variables["blocked_without_import"].is_truthy() &&
+                vm_zbash.imported_modules.count("zbash-utils") > 0 &&
+                vm_zbash.variables["code1"].as_int() == 0 &&
+                vm_zbash.variables["out1"].as_string() == "ADB_TEST_OK" &&
+                vm_zbash.variables["out2"].as_string() == "RIVA_OK_DONE" &&
+                vm_zbash.variables["code_nz"].as_int() == 42 &&
+                vm_zbash.variables["cap_out"].as_string() == "CAP_OK" &&
+                vm_zbash.variables["has_sh"].is_truthy());
+
+    // 73. Wavefront .obj 3D Pipeline: load, parse, subdivide, normalize, raycast, export & render_tui
+    Interpreter vm_obj;
+    vm_obj.execute_code(
+        "val sf_info = obj3d.load(\"assets/models/starfighter.obj\", \"sf\")\n"
+        "val tri_before = sf_info.triangles\n"
+        "val faces_sub = obj3d.subdivide(\"sf\")\n"
+        "val norm_rad = obj3d.normalize(\"sf\", 2.0)\n"
+        "val norm_stats = obj3d.stats(\"sf\")\n"
+        "val norm_sz = norm_stats.size\n"
+        "val exp_obj = obj3d.export(\"sf\")\n"
+        "spawn3d.obj(\"StarfighterOne\", obj: \"assets/models/starfighter.obj\", at: (0, 2, 12), scale: 1.4, color: \"#38bdf8\")\n"
+        "spawn3d.obj(\"OmegaTitan\", obj: \"omega_titan.obj\", at: (0, 3, 28), scale: 1.2, color: \"#f43f5e\")\n"
+        "val ray = physics3d.raycast_scene([0, 2, 0], [0, 0, 1])\n"
+        "val tui_frame = scene3d.render_tui(50, 14)\n"
+    );
+    double max_norm_dim = 0.0;
+    if (vm_obj.variables["norm_sz"].type == ValueType::List && vm_obj.variables["norm_sz"].list_val) {
+        for (const auto& d : *vm_obj.variables["norm_sz"].list_val) {
+            max_norm_dim = std::max(max_norm_dim, d.as_number());
+        }
+    }
+    assert_test("Wavefront .obj 3D Pipeline (Load, Subdivide, Raycast, Export, Render)",
+                vm_obj.loaded_obj_meshes.count("sf") > 0 &&
+                vm_obj.variables["faces_sub"].as_int() > vm_obj.variables["tri_before"].as_int() &&
+                std::abs(max_norm_dim - 2.0) < 0.05 &&
+                vm_obj.variables["norm_rad"].as_number() >= 1.0 &&
+                vm_obj.variables["norm_rad"].as_number() <= 2.0 &&
+                vm_obj.variables["exp_obj"].as_string().find("v ") != std::string::npos &&
+                vm_obj.variables["ray"].map_val != nullptr &&
+                vm_obj.variables["ray"].map_val->count("hit") > 0 &&
+                vm_obj.variables["ray"].map_val->at("hit").is_truthy() &&
+                vm_obj.variables["tui_frame"].as_string().find("SHINE LOOP 3D") != std::string::npos);
+
+    // 74. C# Game Interop (cs! block, cs!(expr), MonoBehaviour lifecycle, Bridge & Scene3D)
+    Interpreter vm_cs;
+    vm_cs.execute_code(
+        "use \"csharp\"\n"
+        "val loop_base = 100\n"
+        "cs! {\n"
+        "    public class LaserTurret : MonoBehaviour {\n"
+        "        public float Charge = 10.0f;\n"
+        "        public int Shots = 0;\n"
+        "        public void Start() {\n"
+        "            Charge = 50.0f;\n"
+        "            LoopingBridge.Set(\"turret_ready\", true);\n"
+        "        }\n"
+        "        public void Update(float dt) {\n"
+        "            Charge = Mathf.Clamp(Charge + dt * 60.0f, 0.0f, 100.0f);\n"
+        "            Shots = Shots + 1;\n"
+        "            LoopingBridge.Set(\"cs_charge\", Charge);\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+        "val inst_id = csharp.new(\"LaserTurret\", \"turret_1\", \"TurretObj\")\n"
+        "csharp.step(0.5)\n"
+        "insert cssnippet as burst_cs:\n"
+        "    var boosted = LoopingBridge.Get(\"loop_base\") + 55;\n"
+        "    LoopingBridge.Set(\"loop_boosted\", boosted);\n"
+        "end\n"
+        "runcs(burst_cs)\n"
+        "val inline_cs = cs!(Mathf.Clamp(125.0f, 0.0f, 100.0f))\n"
+        "val exported_cs = csharp.export(\"DemoArena\")\n"
+    );
+    assert_test("C# Interop (cs! MonoBehaviour, cssnippet, runcs, LoopingBridge, Export)",
+                vm_cs.imported_modules.count("csharp") > 0 &&
+                vm_cs.variables["turret_ready"].is_truthy() &&
+                vm_cs.variables["cs_charge"].as_number() >= 79.0 &&
+                vm_cs.variables["loop_boosted"].as_number() == 155.0 &&
+                vm_cs.variables["inline_cs"].as_number() == 100.0 &&
+                vm_cs.variables["exported_cs"].as_string().find("class DemoArena") != std::string::npos);
+
+    // 75. loopize++ Hybrid Game Additions (ECS, Waves, FSM, Combo, Tweens, Camera Shake, Quests, AABB)
+    Interpreter vm_lz;
+    vm_lz.execute_code(
+        "use \"loopize++\"\n"
+        "lz_banner(\"Loopize 3D Verification\")\n"
+        "val p_id = loopize.ecs_spawn(\"Hero\", \"player\", [0, 2, 0], 120, \"starfighter.obj\", \"StarfighterPilotCS\")\n"
+        "val e_id = loopize.ecs_spawn(\"Drone1\", \"enemy\", [3, 2, 2], 60, \"valkyrie_drone.obj\", \"\")\n"
+        "val near_ids = loopize.spatial_radius([0, 2, 0], 8.0, \"enemy\")\n"
+        "val w_spawned = lz_wave_rush(1, \"valkyrie\", 3, 90, \"valkyrie_drone.obj\")\n"
+        "loopize.fsm_set(\"hero\", \"overdrive\")\n"
+        "val fsm_cur = loopize.fsm_get(\"hero\")\n"
+        "val c1 = loopize.combo_hit(100)\n"
+        "val c2 = loopize.combo_hit(100)\n"
+        "val eased = loopize.ease(\"out_cubic\", 0.5)\n"
+        "val trauma = loopize.shake(0.5)\n"
+        "loopize.camera_update([0, 2, 0], 0.016, 45)\n"
+        "loopize.inventory_add(\"plasma_cell\", 3)\n"
+        "val used_ok = loopize.inventory_use(\"plasma_cell\", 2)\n"
+        "lz_mission(\"m1\", \"Clear Wave 1\", 2, 600)\n"
+        "loopize.quest_progress(\"m1\", 2)\n"
+        "val st = loopize.stats()\n"
+    );
+    assert_test("loopize++ Hybrid Library (ECS, Waves, FSM, Combo, Tween, Shake, Quests)",
+                vm_lz.imported_modules.count("loopize++") > 0 &&
+                vm_lz.variables["w_spawned"].as_int() == 3 &&
+                vm_lz.variables["fsm_cur"].as_string() == "overdrive" &&
+                vm_lz.variables["c2"].as_number() == 125.0 &&
+                vm_lz.variables["eased"].as_number() > 0.8 &&
+                vm_lz.variables["used_ok"].is_truthy() &&
+                vm_lz.variables["st"].map_val != nullptr &&
+                vm_lz.variables["st"].map_val->count("level") > 0 &&
+                vm_lz.variables["st"].map_val->at("level").as_int() >= 2 &&
+                vm_lz.variables["near_ids"].list_val != nullptr &&
+                vm_lz.variables["near_ids"].list_val->size() == 1);
+
     std::cout << "\n" << color::BOLD << (passed == total ? color::GREEN : color::YELLOW)
               << "Results: " << passed << "/" << total << " tests passed." << color::RESET << "\n\n";
 
