@@ -56,7 +56,10 @@ public:
             return available;
         }
         detected = true;
-#ifndef _WIN32
+#if defined(__EMSCRIPTEN__)
+        available = false;
+        toolchain_name = "builtin-cs-vm";
+#elif !defined(_WIN32)
         if (system("command -v dotnet >/dev/null 2>&1") == 0) {
             available = true;
             toolchain_name = "dotnet";
@@ -68,8 +71,16 @@ public:
             toolchain_name = "builtin-cs-vm";
         }
 #else
-        available = false;
-        toolchain_name = "builtin-cs-vm";
+        if (system("where.exe dotnet >NUL 2>&1") == 0) {
+            available = true;
+            toolchain_name = "dotnet";
+        } else if (system("where.exe csc >NUL 2>&1") == 0) {
+            available = true;
+            toolchain_name = "csc";
+        } else {
+            available = false;
+            toolchain_name = "builtin-cs-vm";
+        }
 #endif
         if (out_tool) *out_tool = toolchain_name;
         return available;

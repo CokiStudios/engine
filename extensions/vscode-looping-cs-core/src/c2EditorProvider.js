@@ -129,7 +129,8 @@ try:
 except Exception as e:
     print(json.dumps({'success': False, 'error': str(e)}))
 `;
-            cp.execFile('python3', ['-c', pyScript, filePath], (err, stdout, stderr) => {
+            const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+            cp.execFile(pyCmd, ['-c', pyScript, filePath], (err, stdout, stderr) => {
                 if (!err && stdout) {
                     try {
                         const parsed = JSON.parse(stdout);
@@ -264,7 +265,8 @@ with zipfile.ZipFile(pkg, 'w', zipfile.ZIP_DEFLATED) as z_out:
 print("OK")
 `;
         return new Promise((resolve, reject) => {
-            cp.execFile('python3', ['-c', pyScript, filePath, subfileName, newContent], (err, stdout) => {
+            const pyCmd = process.platform === 'win32' ? 'python' : 'python3';
+            cp.execFile(pyCmd, ['-c', pyScript, filePath, subfileName, newContent], (err, stdout) => {
                 if (err) return reject(err);
                 resolve();
             });
@@ -320,6 +322,17 @@ print("OK")
     async extractPackage(filePath) {
         const outDir = path.join(path.dirname(filePath), path.basename(filePath, '.c2') + '_extracted');
         fs.mkdirSync(outDir, { recursive: true });
+        if (process.platform === 'win32') {
+            const pyScript = `import zipfile, sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])`;
+            cp.execFile('python', ['-c', pyScript, filePath, outDir], (error) => {
+                if (error) {
+                    vscode.window.showErrorMessage(`❌ Error al extraer: ${error.message}`);
+                } else {
+                    vscode.window.showInformationMessage(`📂 Módulo extraído en: ${outDir}`);
+                }
+            });
+            return;
+        }
         cp.exec(`unzip -o "${filePath}" -d "${outDir}"`, (error) => {
             if (error) {
                 vscode.window.showErrorMessage(`❌ Error al extraer: ${error.message}`);

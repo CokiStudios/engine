@@ -387,6 +387,57 @@
             color: var(--primary);
             text-decoration: none;
         }
+
+        .playground-grid {
+            display: grid;
+            grid-template-columns: 1.05fr 1fr;
+            gap: 18px;
+            margin-top: 16px;
+        }
+
+        @media (max-width: 900px) {
+            .playground-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .wasm-editor {
+            width: 100%;
+            min-height: 290px;
+            background: #030712;
+            color: #e2e8f0;
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            border-radius: 12px;
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            resize: vertical;
+            outline: none;
+        }
+
+        .wasm-canvas {
+            width: 100%;
+            height: auto;
+            background: #030712;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 12px;
+            display: block;
+        }
+
+        .wasm-console {
+            margin-top: 12px;
+            background: #030712;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 10px 12px;
+            height: 120px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--aqua);
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body>
@@ -397,29 +448,36 @@
         </a>
         <div class="nav-links">
             <span class="badge-ver"><span class="badge-dot"></span> Looping v1.1 • Arch 3.0A</span>
+            <a href="#wasm-playground" style="color: var(--aqua);">WASM Live</a>
             <a href="https://cokistudios.com">Inicio</a>
             <a href="/hiop-ide">hiOP Web IDE</a>
             <a href="/developer">Docs</a>
-            <a href="/engine/latest.json" target="_blank" style="color: var(--aqua);">latest.json</a>
+            <a href="/engine/latest.json" target="_blank">latest.json</a>
         </div>
     </header>
 
     <main>
         <div class="hero">
-            <span class="badge-ver" style="margin-bottom: 14px;"><span class="badge-dot"></span> Looping v1.1 • Alpha! 1.1A • Arch 3.0A Quantum Synthesis (arm64 &amp; x86_64)</span>
+            <span class="badge-ver" style="margin-bottom: 14px;"><span class="badge-dot"></span> Looping v1.1 • Alpha! 1.1A • Arch 3.0A (Windows x64 / macOS / Linux / WebAssembly)</span>
             <h1>Looping Engine &amp; smiledev</h1>
-            <p>El motor híbrido C++17 2D/3D de alto rendimiento para macOS &amp; Loop OS. Distribución oficial centralizada, canales oficiales (<strong>Looping</strong> Prod v1.1, <strong>Omega Looping</strong> RC y <strong>Alpha! 1.1A</strong> Super Experimental), Apple Metal 4, terminal persistente (<code>-i</code>), 71/71 pruebas verificadas y gestor <code>smiledev</code>.</p>
+            <p>El motor híbrido C++17 2D/3D de alto rendimiento para <strong>Windows x64</strong>, <strong>macOS Universal</strong>, <strong>Linux</strong> y la Web vía <strong>C++17 WebAssembly</strong> (<code>looping_wasm.wasm</code>). Distribución oficial centralizada, canales oficiales (<strong>Looping</strong> Prod v1.1, <strong>Omega Looping</strong> RC y <strong>Alpha! 1.1A</strong>), 71+ pruebas nativas verificadas y gestor <code>smiledev</code>.</p>
         </div>
 
         <div class="install-box">
-            <div class="tab-buttons">
-                <button class="tab-btn active" onclick="switchTab('brew', this)">🍺 Homebrew Tap</button>
-                <button class="tab-btn" onclick="switchTab('curl', this)">⚡ 1-Line Installer</button>
+            <div class="tab-buttons" style="flex-wrap: wrap;">
+                <button class="tab-btn active" onclick="switchTab('win', this)">🪟 Windows PowerShell</button>
+                <button class="tab-btn" onclick="switchTab('brew', this)">🍺 Homebrew Tap</button>
+                <button class="tab-btn" onclick="switchTab('curl', this)">⚡ 1-Line Linux/macOS</button>
                 <button class="tab-btn" onclick="switchTab('smile', this)">🔄 smiledev Alpha! 1.1A</button>
                 <button class="tab-btn" onclick="switchTab('doctor', this)">🩺 smiledev doctor</button>
             </div>
 
-            <div id="cmd-brew" class="cmd-display">
+            <div id="cmd-win" class="cmd-display">
+                <span class="cmd-text">.\install.ps1 -Verify</span>
+                <button class="btn-copy" onclick="copySnippet('.\\install.ps1 -Verify', this)">Copiar</button>
+            </div>
+
+            <div id="cmd-brew" class="cmd-display" style="display: none;">
                 <span class="cmd-text">brew tap cokistudios/tap &amp;&amp; brew install looping smiledev</span>
                 <button class="btn-copy" onclick="copySnippet('brew tap cokistudios/tap && brew install looping smiledev', this)">Copiar</button>
             </div>
@@ -474,6 +532,37 @@
             <div class="card">
                 <div>
                     <div class="card-header">
+                        <span class="card-icon">🪟</span>
+                        <div>
+                            <h3 class="card-title">Windows x64 Native &amp; PowerShell</h3>
+                            <span style="font-size: 0.78rem; color: var(--aqua); font-family: 'JetBrains Mono';">MSVC / MinGW C++17 • looping.exe + smiledev.cmd</span>
+                        </div>
+                    </div>
+                    <p class="card-sub">Soporte nativo Windows con <code>bin/looping.exe</code>, <code>install.ps1</code>, <code>smiledev.cmd</code>/<code>.ps1</code> y puente <code>win32</code> integrado.</p>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <a href="../install.ps1" class="btn-download" style="flex:1; min-width:120px;">install.ps1</a>
+                    <a href="../bin/looping.exe" class="btn-download" style="flex:1; min-width:120px;">looping.exe</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <div>
+                    <div class="card-header">
+                        <span class="card-icon">🌐</span>
+                        <div>
+                            <h3 class="card-title">Looping C++17 WebAssembly</h3>
+                            <span style="font-size: 0.78rem; color: var(--purple); font-family: 'JetBrains Mono';">looping_wasm.wasm + looping_runtime.js</span>
+                        </div>
+                    </div>
+                    <p class="card-sub">El compilador real C++17, física 2D/3D, Z-Buffer RGBA, C# VM y <code>Invis. Compile</code> compilados directamente a WebAssembly.</p>
+                </div>
+                <a href="#wasm-playground" class="btn-download">Probar en Navegador (WASM)</a>
+            </div>
+
+            <div class="card">
+                <div>
+                    <div class="card-header">
                         <span class="card-icon">📦</span>
                         <div>
                             <h3 class="card-title">Universal Tarball</h3>
@@ -516,6 +605,34 @@
                 <a href="/engine/Instalar-Looping.pkg" class="btn-download">Descargar .pkg</a>
             </div>
         </div>
+
+        <section id="wasm-playground" class="features-section" style="margin-bottom: 40px; border-color: rgba(56, 189, 248, 0.35);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <h2 class="section-title" style="margin-bottom:0;">⚡ Looping C++17 WebAssembly Live Playground</h2>
+                <span id="wasm-status-badge" class="badge-ver">Cargando looping_wasm.wasm...</span>
+            </div>
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin: 10px 0 14px;">
+                Ejecuta código <code>.loop</code> directamente con el binario WebAssembly del motor real C++17 (<code>looping_wasm.wasm</code> + <code>looping_runtime.js</code> — 0% emulación JS). Controles en el lienzo: <code>WASD/Flechas</code> Mover • <code>Espacio</code> Saltar • <code>F</code> Disparar • <code>Shift</code> Dash • <code>V</code> Cámara 3D.
+            </p>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <button class="btn-copy" style="margin-left:0;" onclick="loadWasmPreset('2d')">🎮 Stage 2D</button>
+                <button class="btn-copy" style="margin-left:0;" onclick="loadWasmPreset('3d')">🧊 Arena 3D Z-Buffer</button>
+                <button class="btn-copy" style="margin-left:0;" onclick="loadWasmPreset('csharp')">⚙️ C# + loopize++</button>
+                <button class="btn-copy" style="margin-left:0; background:linear-gradient(135deg,var(--primary),var(--purple)); color:#030712;" onclick="runWasmEditor()">▶ Ejecutar en C++ WASM</button>
+                <button class="btn-copy" style="margin-left:0;" onclick="runWasmSelftest()">🩺 Self-Test (7/7)</button>
+                <button class="btn-copy" style="margin-left:0;" onclick="runWasmBench()">⚡ Benchmark</button>
+                <button class="btn-copy" style="margin-left:0;" onclick="runWasmInvis()">🔒 Invis LPBN</button>
+            </div>
+            <div class="playground-grid">
+                <div>
+                    <textarea id="wasm-code" class="wasm-editor" spellcheck="false"></textarea>
+                    <div id="wasm-console" class="wasm-console">&gt; Esperando módulo WebAssembly...</div>
+                </div>
+                <div>
+                    <canvas id="wasm-canvas" class="wasm-canvas" width="760" height="400"></canvas>
+                </div>
+            </div>
+        </section>
 
         <div class="features-section">
             <h2 class="section-title">🚀 Novedades en Looping v1.1 (Arch 3.0A Quantum Synthesis)</h2>
@@ -665,16 +782,9 @@
             document.querySelectorAll('.cmd-display').forEach(el => el.style.display = 'none');
             const activeBtn = btnEl || (typeof event !== 'undefined' ? event.target : null);
             if (activeBtn) activeBtn.classList.add('active');
-            
-            if (type === 'brew') {
-                document.getElementById('cmd-brew').style.display = 'flex';
-            } else if (type === 'curl') {
-                document.getElementById('cmd-curl').style.display = 'flex';
-            } else if (type === 'smile') {
-                document.getElementById('cmd-smile').style.display = 'flex';
-            } else if (type === 'doctor') {
-                document.getElementById('cmd-doctor').style.display = 'flex';
-            }
+
+            const targetEl = document.getElementById('cmd-' + type);
+            if (targetEl) targetEl.style.display = 'flex';
         }
 
         function filterModules(query) {
@@ -696,6 +806,102 @@
                 }, 2000);
             });
         }
+    </script>
+    <script type="module">
+        import { LoopingWasmRuntime } from './looping_runtime.js';
+
+        const PRESETS = {
+            '2d': `define game "WasmArcade2D" version 1.1:
+    game.world(width: 1100, height: 400)
+    game.gravity(980)
+    spawn.player(name: "Hero", at: (90, 290), speed: 280, jump: 450, health: 100)
+    spawn.platform(at: (60, 320), size: (180, 16), color: "#6366f1")
+    spawn.moving_platform(at: (270, 240), size: (140, 16), range: (230, 480), speed: 85, color: "#06b6d4")
+    spawn.pad(at: (230, 336), power: 680)
+    spawn.coin(at: (330, 190), points: 150)
+    spawn.coin(at: (540, 170), points: 250)
+    spawn.enemy(name: "Forkbot", at: (640, 324), range: (560, 820), speed: 80, health: 40)
+    spawn.portal(at: (960, 290), label: "GOAL")
+    say("Stage 2D ejecutándose en C++17 WebAssembly!")`,
+            '3d': `define game3d "WasmOrbit3D" version 3.0:
+    scene3d.world(name: "WASM Orbit 3D", size: (180, 80, 180), sky: "cyber_night", fog: 0.008, grid: true)
+    camera3d.set(mode: "chase", pos: (0, 8, -16), target: (0, 2, 12), fov: 65, smooth: 0.14)
+    light3d.directional(dir: (-0.4, -0.9, -0.35), color: "#f8fafc", intensity: 1.1)
+    physics3d.config(gravity: -26.0, substeps: 4, friction: 0.86, bounce: 0.1)
+    spawn3d.player("CyberPilot", at: (0, 2, 0), speed: 22)
+    spawn3d.box(at: (0, -0.5, 14), size: (10, 1, 10), color: "#6366f1")
+    spawn3d.crystal(at: (0, 2.8, 14), points: 200)
+    spawn3d.enemy("Sentinel3D", at: (3, 2, 24), color: "#ef4444")
+    spawn3d.portal(at: (0, 3, 38), label: "WARP GATE")
+    say("Z-Buffer Software Rasterizer 3D activo en WebAssembly!")`,
+            'csharp': `use "csharp"
+use "loopize++"
+cs! {
+    public class QuantumBot : MonoBehaviour {
+        public float Energy = 42.0f;
+        public void Start() { Console.WriteLine("[C#] QuantumBot online in WASM"); }
+        public void Update(float dt) {
+            Energy += dt * 15.0f;
+            LoopingBridge.Set("bot_energy", Energy);
+        }
+    }
+}
+csharp.new("QuantumBot", "qb1", "Bot")
+csharp.step(1.0)
+val pwr = 64 |> math.sqrt
+val digest = crypto.sha256($"wasm:{pwr}:{bot_energy}")
+say($"Sqrt={pwr} | C# Energy={bot_energy} | SHA256={digest}")`
+        };
+
+        const editorEl = document.getElementById('wasm-code');
+        const consoleEl = document.getElementById('wasm-console');
+        const badgeEl = document.getElementById('wasm-status-badge');
+        const canvasEl = document.getElementById('wasm-canvas');
+
+        function appendLog(msg) {
+            if (!consoleEl) return;
+            consoleEl.textContent += (consoleEl.textContent ? '\n' : '') + '> ' + msg;
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        const rt = new LoopingWasmRuntime(canvasEl, { onLog: appendLog });
+        window.__loopingWasm = rt;
+
+        editorEl.value = PRESETS['3d'];
+        try {
+            await rt.ready;
+            const v = rt.getVersion();
+            badgeEl.textContent = `${v.engine} v${v.version} (Arch ${v.arch}) • C++17 WASM Ready`;
+            consoleEl.textContent = `> Loaded ${v.runtime}`;
+            rt.execute(editorEl.value);
+        } catch (err) {
+            badgeEl.textContent = 'Error cargando WASM (usa servidor HTTP/localhost)';
+            appendLog('Error: ' + err.message);
+        }
+
+        window.loadWasmPreset = (name) => {
+            if (!PRESETS[name]) return;
+            editorEl.value = PRESETS[name];
+            consoleEl.textContent = '';
+            rt.execute(editorEl.value);
+        };
+        window.runWasmEditor = () => {
+            consoleEl.textContent = '';
+            rt.execute(editorEl.value);
+        };
+        window.runWasmSelftest = () => {
+            const st = rt.runSelftest();
+            consoleEl.textContent = `> WASM Self-Test: ${st.passed}/${st.total} passed (${st.elapsedMs.toFixed(1)} ms)\n` +
+                st.tests.map(t => `  ${t.passed ? '✔' : '✘'} ${t.name}`).join('\n');
+        };
+        window.runWasmBench = () => {
+            const b = rt.bench();
+            appendLog(`Benchmark 2500 iters: ${b.ms.toFixed(2)} ms | acc=${b.acc} | sha256=${b.sha256.slice(0, 16)}...`);
+        };
+        window.runWasmInvis = () => {
+            const inv = rt.encodeInvisHex(editorEl.value, 'shine_ui');
+            appendLog(`LPBN v3.0A (${inv.byteLength} bytes, valid=${inv.valid}): ${inv.hex.slice(0, 72)}...`);
+        };
     </script>
 </body>
 </html>

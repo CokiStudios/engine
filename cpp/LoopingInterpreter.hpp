@@ -7,6 +7,7 @@
 #include "LoopingCSharpBridge.hpp"
 #include "LoopizeCore.hpp"
 #include "LoopingCompiler.hpp"
+#include "LoopingStage.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -20,6 +21,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <thread>
+#include <functional>
 #ifndef _WIN32
 #include <unistd.h>
 #include <sys/wait.h>
@@ -205,6 +207,30 @@ public:
     bool has_active_window = false;
     pid_t window_process_pid = 0;
     loop_math::Scene3D current_scene3d;
+    LoopingStageRuntime stage;
+
+    void reset_runtime() {
+        variables.clear();
+        functions.clear();
+        python_snippets.clear();
+        csharp_snippets.clear();
+        snippet_types.clear();
+        imported_modules.clear();
+        imported_python_modules.clear();
+        swiftui_components.clear();
+        dynamic_programs.clear();
+        loaded_obj_meshes.clear();
+        loopize_runtime.reset();
+        current_scene3d.clear();
+        stage.reset();
+        has_returned = false;
+        has_broken = false;
+        has_continued = false;
+        has_thrown = false;
+        thrown_error = "";
+        last_return_value = Value();
+        init_builtins();
+    }
 
     static loop_math::Vec3 val_to_vec3(const Value& v) {
         if (v.type == ValueType::List && v.list_val) {
@@ -287,13 +313,25 @@ public:
     }
 
     static std::string resolve_zbash_shell() {
-#ifndef _WIN32
+#if defined(__EMSCRIPTEN__)
+        return "wasm-sandbox";
+#elif !defined(_WIN32)
         static const char* candidates[] = {"/bin/zsh", "/usr/bin/zsh", "/bin/bash", "/bin/sh"};
         for (const char* sh : candidates) {
             if (access(sh, X_OK) == 0) return std::string(sh);
         }
         return "/bin/sh";
 #else
+        static const char* win_candidates[] = {
+            "C:\\Program Files\\Git\\bin\\bash.exe",
+            "C:\\Program Files\\Git\\usr\\bin\\bash.exe",
+            "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+            "C:\\msys64\\usr\\bin\\bash.exe"
+        };
+        for (const char* sh : win_candidates) {
+            std::ifstream f(sh);
+            if (f.good()) return std::string(sh);
+        }
         return "cmd.exe";
 #endif
     }
@@ -338,7 +376,18 @@ public:
 
     ZBashResult run_zbash_command(const std::string& cmd, bool stream_to_stdout) {
         ZBashResult res;
-#ifndef _WIN32
+#if defined(__EMSCRIPTEN__)
+        std::string trimmed = cmd;
+        while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) trimmed.erase(0, 1);
+        if (trimmed.rfind("echo ", 0) == 0) {
+            res.output = trimmed.substr(5) + "\n";
+            res.exit_code = 0;
+        } else {
+            res.output = "[WASM Sandbox: shell execution unavailable in browser]";
+            res.exit_code = 127;
+        }
+        if (stream_to_stdout && !res.output.empty()) std::cout << res.output << std::flush;
+#elif !defined(_WIN32)
         std::string shell_path = resolve_zbash_shell();
         int pipefd[2];
         if (pipe(pipefd) != 0) {
@@ -385,17 +434,96 @@ public:
             res.exit_code = 127;
         }
 #else
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if (!pipe) {
-            res.exit_code = 127;
-            return res;
+        std::string shell_path = resolve_zbash_shell();
+        if (shell_path != "cmd.exe") {
+            auto quote_msvcrt = [](const std::string& arg) {
+                std::string out = "\"";
+                size_t bs = 0;
+                for (char c : arg) {
+                    if (c == '\\') {
+                        bs++;
+                    } else if (c == '"') {
+                        out.append(bs * 2 + 1, '\\');
+                        out.push_back('"');
+                        bs = 0;
+                    } else {
+                        out.append(bs, '\\');
+                        out.push_back(c);
+                        bs = 0;
+                    }
+                }
+                out.append(bs * 2, '\\');
+                out.push_back('"');
+                return out;
+            };
+            SECURITY_ATTRIBUTES sa{};
+            sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+            sa.bInheritHandle = TRUE;
+            sa.lpSecurityDescriptor = NULL;
+
+            HANDLE hRead = NULL, hWrite = NULL;
+            if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+                res.exit_code = 127;
+                return res;
+            }
+            SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+            STARTUPINFOA si{};
+            si.cb = sizeof(STARTUPINFOA);
+            si.hStdError = hWrite;
+            si.hStdOutput = hWrite;
+            si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+            si.dwFlags |= STARTF_USESTDHANDLES;
+
+            PROCESS_INFORMATION pi{};
+            std::string cmdline = quote_msvcrt(shell_path) + " -c " + quote_msvcrt(cmd);
+            std::vector<char> cmd_buf(cmdline.begin(), cmdline.end());
+            cmd_buf.push_back('\0');
+
+            BOOL ok = CreateProcessA(
+                shell_path.c_str(),
+                cmd_buf.data(),
+                NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi
+            );
+            CloseHandle(hWrite);
+
+            if (ok) {
+                char buf[4096];
+                DWORD bytesRead = 0;
+                while (ReadFile(hRead, buf, sizeof(buf), &bytesRead, NULL) && bytesRead > 0) {
+                    res.output.append(buf, static_cast<size_t>(bytesRead));
+                    if (stream_to_stdout) {
+                        std::cout.write(buf, bytesRead);
+                        std::cout.flush();
+                    }
+                }
+                CloseHandle(hRead);
+                WaitForSingleObject(pi.hProcess, INFINITE);
+                DWORD exitCode = 0;
+                if (GetExitCodeProcess(pi.hProcess, &exitCode)) {
+                    res.exit_code = static_cast<int>(exitCode);
+                } else {
+                    res.exit_code = 1;
+                }
+                CloseHandle(pi.hProcess);
+                CloseHandle(pi.hThread);
+            } else {
+                CloseHandle(hRead);
+                res.exit_code = 127;
+            }
+        } else {
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (!pipe) {
+                res.exit_code = 127;
+                return res;
+            }
+            char buf[512];
+            while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+                res.output += buf;
+                if (stream_to_stdout) std::cout << buf << std::flush;
+            }
+            res.exit_code = pclose(pipe);
         }
-        char buf[512];
-        while (fgets(buf, sizeof(buf), pipe) != nullptr) {
-            res.output += buf;
-            if (stream_to_stdout) std::cout << buf << std::flush;
-        }
-        res.exit_code = pclose(pipe);
 #endif
         variables["zbash_last_code"] = Value(static_cast<int64_t>(res.exit_code));
         variables["zbash.last_code"] = Value(static_cast<int64_t>(res.exit_code));
@@ -614,7 +742,9 @@ public:
             if (n == "math.tau" || n == "TAU" || n == "tau") return Value(6.28318530717958647692);
             if (n == "math.phi" || n == "PHI" || n == "phi") return Value(1.61803398874989484820);
             if (n == "sys.platform") {
-#if defined(__APPLE__)
+#if defined(__EMSCRIPTEN__)
+                return Value("wasm");
+#elif defined(__APPLE__)
                 return Value("darwin");
 #elif defined(_WIN32)
                 return Value("windows");
@@ -625,10 +755,14 @@ public:
 #endif
             }
             if (n == "sys.arch") {
-#if defined(__arm64__) || defined(__aarch64__)
+#if defined(__EMSCRIPTEN__)
+                return Value("wasm32");
+#elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
                 return Value("arm64");
 #elif defined(__x86_64__) || defined(_M_X64)
                 return Value("x86_64");
+#elif defined(__i386__) || defined(_M_IX86)
+                return Value("x86");
 #else
                 return Value("unknown");
 #endif
@@ -2437,7 +2571,9 @@ public:
                 return Value("");
             }
             if (name == "sys.platform") {
-#if defined(__APPLE__)
+#if defined(__EMSCRIPTEN__)
+                return Value("wasm");
+#elif defined(__APPLE__)
                 return Value("darwin");
 #elif defined(_WIN32)
                 return Value("windows");
@@ -2448,10 +2584,14 @@ public:
 #endif
             }
             if (name == "sys.arch") {
-#if defined(__arm64__) || defined(__aarch64__)
+#if defined(__EMSCRIPTEN__)
+                return Value("wasm32");
+#elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
                 return Value("arm64");
 #elif defined(__x86_64__) || defined(_M_X64)
                 return Value("x86_64");
+#elif defined(__i386__) || defined(_M_IX86)
+                return Value("x86");
 #else
                 return Value("unknown");
 #endif
@@ -2472,7 +2612,10 @@ public:
             }
             if (name == "zbash.has" || name == "zbash_utils.has") {
                 if (evaluated_args.empty()) return Value(false);
-                std::string check = "command -v -- " + shell_single_quote(evaluated_args[0].as_string()) + " >/dev/null 2>&1";
+                std::string tool_name = evaluated_args[0].as_string();
+                std::string check = (resolve_zbash_shell() == "cmd.exe")
+                    ? ("where.exe \"" + tool_name + "\" >NUL 2>&1")
+                    : ("command -v -- " + shell_single_quote(tool_name) + " >/dev/null 2>&1");
                 return Value(run_zbash_command(check, false).exit_code == 0);
             }
             if (name == "zbash.shell" || name == "zbash_utils.shell") {
@@ -3160,6 +3303,7 @@ public:
             }
             if (name == "game.play_sfx" || name == "game_plus.play_sfx") {
                 std::string sfx = evaluated_args.size() >= 1 ? evaluated_args[0].as_string() : "coin";
+                stage.emit_sfx(sfx);
                 if (sfx == "jump") {
                     std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone 620 Hz for 70 ms\n";
                 } else if (sfx == "coin") {
@@ -3889,6 +4033,7 @@ public:
             if (name == "sound.beep" || name == "audio.beep") {
                 double freq = evaluated_args.size() >= 1 ? evaluated_args[0].as_number() : 440.0;
                 double dur = evaluated_args.size() >= 2 ? evaluated_args[1].as_number() : 100.0;
+                stage.emit_sfx("tone:" + std::to_string(static_cast<int>(freq)) + ":" + std::to_string(static_cast<int>(dur)));
                 std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone " << static_cast<int64_t>(freq) << " Hz for " << static_cast<int64_t>(dur) << " ms\n";
                 return Value(true);
             }
@@ -3904,6 +4049,7 @@ public:
                 else if (note == "A4") freq = 440.00;
                 else if (note == "B4") freq = 493.88;
                 else if (note == "C5") freq = 523.25;
+                stage.emit_sfx("tone:" + std::to_string(static_cast<int>(freq)) + ":" + std::to_string(static_cast<int>(dur)));
                 std::cout << color::CYAN << "[AUDIO SYNTH]" << color::RESET << " Tone " << static_cast<int64_t>(freq) << " Hz (" << note << ") for " << static_cast<int64_t>(dur) << " ms\n";
                 return Value(true);
             }
@@ -4554,8 +4700,9 @@ public:
             // Check if built-in stdlib module (only if no local package on disk)
             static const std::unordered_set<std::string> stdlib_modules = {
                 "math", "crypto", "sys", "system", "csv", "datetime", "regex", "ui", "swiftui", "json", "file",
-                "csid", "core_utils", "utils",
-                "game_plus", "game",
+                "csid", "core_utils", "utils", "loop-core-utils",
+                "game_plus", "game", "loop-game-plus",
+                "math3d", "physics3d", "scene3d", "loop-math-3d", "invis",
                 "csms", "ai",
                 "sound", "audio", "cpp_snippets", "metal4", "metal", "loop.metal4",
                 "zbash-utils", "zbash_utils", "loop.zbash-utils", "zbash",
@@ -4570,7 +4717,7 @@ public:
             }
 
             // Search resolution paths for the module file
-            std::string home_dir = getenv("HOME") ? getenv("HOME") : "";
+            std::string home_dir = get_user_home();
             std::vector<std::string> candidate_paths = {
                 mod,
                 mod + ".loop",
@@ -4854,6 +5001,7 @@ public:
 
         // 16. Spawn Entity: Sprite / Platform / Coin / Bubbly Dot
         if (auto sp = std::dynamic_pointer_cast<SpawnEntityStmt>(stmt)) {
+            stage.ingest_spawn_2d(*sp);
             if (sp->entity_type == "bubbly_dot") {
                 std::cout << color::GREEN << "[BUBBLY DOT]" << color::RESET << " Active Notch [" 
                           << (sp->state.empty() ? "MUSIC" : sp->state) << "]: \"" 
@@ -5023,6 +5171,14 @@ public:
                 csharp_bridge.instantiate(e.cs_class, e.name + "_cs", e.name, variables, &current_scene3d);
             }
 
+            if (e.type == "player") {
+                stage.p3d_spawn_x = e.pos.x;
+                stage.p3d_spawn_y = e.pos.y;
+                stage.p3d_spawn_z = e.pos.z;
+                stage.p3d_vx = stage.p3d_vy = stage.p3d_vz = 0.0;
+                stage.p3d_coyote = stage.coyote_time;
+                stage.p3d_jumps = 0;
+            }
             current_scene3d.entities.push_back(e);
             current_window.add_entity_3d(e);
 
@@ -5037,6 +5193,7 @@ public:
 
         // Game Configuration Directives
         if (auto gcfg = std::dynamic_pointer_cast<GameConfigStmt>(stmt)) {
+            stage.ingest_game_config(*gcfg);
             if (gcfg->config_key == "world") {
                 std::cout << color::CYAN << "[GAME WORLD]" << color::RESET << " Stage Bounds: " 
                           << gcfg->val1 << "x" << gcfg->val2 << " px\n";
@@ -5070,6 +5227,7 @@ public:
 
         // 17. Emit Particles
         if (auto em = std::dynamic_pointer_cast<EmitParticlesStmt>(stmt)) {
+            stage.spawn_particles(em->x, em->y, em->color, 18);
             std::cout << color::CYAN << "[PARTICLES]" << color::RESET << " Emitted FX burst at (" 
                       << em->x << ", " << em->y << ") [" << em->color << "]\n";
             return;
@@ -5078,6 +5236,7 @@ public:
         // 18. Audio Tone
         if (auto tone = std::dynamic_pointer_cast<PlayToneStmt>(stmt)) {
             current_window.add_tone(tone->freq_hz, tone->duration_ms);
+            stage.emit_sfx("tone:" + std::to_string(static_cast<int>(tone->freq_hz)) + ":" + std::to_string(static_cast<int>(tone->duration_ms)));
             std::cout << color::GREEN << "[AUDIO SYNTH]" << color::RESET << " Tone " 
                       << static_cast<int>(tone->freq_hz) << " Hz for " 
                       << static_cast<int>(tone->duration_ms) << " ms\n";

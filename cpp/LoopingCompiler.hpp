@@ -17,16 +17,61 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <sys/stat.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <io.h>
+#include <direct.h>
+#include <process.h>
+#ifndef _PID_T_
+#define _PID_T_
+typedef int pid_t;
+#endif
+#define getcwd _getcwd
+#define isatty _isatty
+#define fileno _fileno
+#else
 #include <unistd.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <signal.h>
+#endif
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
 
 namespace looping {
+
+inline void ensure_dir_exists(const std::string& dir) {
+    if (dir.empty()) return;
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+}
+
+inline void make_executable(const std::string& path) {
+#ifdef _WIN32
+    _chmod(path.c_str(), _S_IREAD | _S_IWRITE);
+#else
+    chmod(path.c_str(), 0755);
+#endif
+}
+
+inline std::string get_user_home() {
+    const char* h = std::getenv("HOME");
+    if (h && *h) return std::string(h);
+#ifdef _WIN32
+    const char* up = std::getenv("USERPROFILE");
+    if (up && *up) return std::string(up);
+#endif
+    return "";
+}
 
 namespace color {
     inline const char* RESET   = "\033[0m";
@@ -715,10 +760,26 @@ private:
 
 // Helper: cleanly spawn native window without blocking or cluttering the persistent shell
 inline pid_t launch_native_window_process(const std::string& script_path) {
-#ifdef _WIN32
-    std::string cmd = "start pythonw \"" + script_path + "\"";
-    system(cmd.c_str());
-    return 1;
+#if defined(__EMSCRIPTEN__)
+    (void)script_path;
+    return 0;
+#elif defined(_WIN32)
+    STARTUPINFOA si{};
+    si.cb = sizeof(STARTUPINFOA);
+    PROCESS_INFORMATION pi{};
+    const char* py_bins[] = {"pythonw.exe", "python.exe", "py.exe"};
+    for (const char* py_exe : py_bins) {
+        std::string cmdline = std::string(py_exe) + " \"" + script_path + "\"";
+        std::vector<char> buf(cmdline.begin(), cmdline.end());
+        buf.push_back('\0');
+        if (CreateProcessA(NULL, buf.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            pid_t pid = static_cast<pid_t>(pi.dwProcessId);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            return pid;
+        }
+    }
+    return 0;
 #else
     pid_t pid = fork();
     if (pid == 0) {
@@ -1693,9 +1754,7 @@ public:
     bool save_loop(const std::string& path) const {
         size_t slash = path.find_last_of("/\\");
         if (slash != std::string::npos) {
-            std::string dir = path.substr(0, slash);
-            std::string mkdir_cmd = "mkdir -p \"" + dir + "\"";
-            system(mkdir_cmd.c_str());
+            ensure_dir_exists(path.substr(0, slash));
         }
         std::ofstream out(path);
         if (!out.is_open()) return false;
@@ -1706,9 +1765,7 @@ public:
     bool save_html(const std::string& path) const {
         size_t slash = path.find_last_of("/\\");
         if (slash != std::string::npos) {
-            std::string dir = path.substr(0, slash);
-            std::string mkdir_cmd = "mkdir -p \"" + dir + "\"";
-            system(mkdir_cmd.c_str());
+            ensure_dir_exists(path.substr(0, slash));
         }
         std::ofstream out(path);
         if (!out.is_open()) return false;
@@ -2094,9 +2151,7 @@ public:
     bool save_native_gui(const std::string& path) const {
         size_t slash = path.find_last_of("/\\");
         if (slash != std::string::npos) {
-            std::string dir = path.substr(0, slash);
-            std::string mkdir_cmd = "mkdir -p \"" + dir + "\"";
-            system(mkdir_cmd.c_str());
+            ensure_dir_exists(path.substr(0, slash));
         }
         std::ofstream out(path);
         if (!out.is_open()) return false;
@@ -2106,7 +2161,7 @@ public:
 
     bool show_native(bool launch_interactive = true) const {
         std::cout << render_ascii() << "\n";
-        system("mkdir -p build");
+        ensure_dir_exists("build");
 
         std::string py_path = "build/" + app_name + "_native.py";
         save_native_gui(py_path);
@@ -2123,7 +2178,7 @@ public:
 
     bool show(bool launch_interactive = true, const std::string& mode = "native") const {
         std::cout << render_ascii() << "\n";
-        system("mkdir -p build");
+        ensure_dir_exists("build");
 
         std::string loop_path = "build/" + app_name + ".loop";
         std::string html_path = "build/" + app_name + ".html";
@@ -2867,6 +2922,13 @@ public:
             std::ifstream f(exe_buf, std::ios::binary);
             if (f.good()) return std::string(exe_buf);
         }
+#elif defined(_WIN32)
+        char exe_buf[MAX_PATH];
+        DWORD len = GetModuleFileNameA(NULL, exe_buf, MAX_PATH);
+        if (len > 0 && len < MAX_PATH) {
+            std::ifstream f(exe_buf, std::ios::binary);
+            if (f.good()) return std::string(exe_buf);
+        }
 #elif defined(__linux__)
         char exe_buf[4096];
         ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
@@ -2877,6 +2939,12 @@ public:
         }
 #endif
         std::vector<std::string> candidates = {
+#ifdef _WIN32
+            "bin/looping.exe",
+            "../bin/looping.exe",
+            "../../bin/looping.exe",
+            "looping.exe",
+#endif
             "bin/looping",
             "../bin/looping",
             "../../bin/looping",
@@ -2900,9 +2968,7 @@ public:
         size_t slash = out_file.find_last_of("/\\");
         if (slash != std::string::npos) {
             std::string dir = out_file.substr(0, slash);
-            if (!dir.empty()) {
-                system(("mkdir -p \"" + dir + "\"").c_str());
-            }
+            ensure_dir_exists(dir);
         }
 
         auto ends_with = [](const std::string& str, const std::string& suf) {
@@ -2944,7 +3010,7 @@ public:
                                 if (out.is_open()) {
                                     out.write(reinterpret_cast<const char*>(exe_bytes.data()), static_cast<std::streamsize>(exe_bytes.size()));
                                     out.close();
-                                    chmod(out_file.c_str(), 0755);
+                                    make_executable(out_file);
 #ifdef __APPLE__
                                     std::string sign_cmd = "codesign --force --sign - \"" + out_file + "\" >/dev/null 2>&1";
                                     system(sign_cmd.c_str());
@@ -2969,7 +3035,7 @@ public:
             }
             out.write(reinterpret_cast<const char*>(lpbn_img.data()), static_cast<std::streamsize>(lpbn_img.size()));
             out.close();
-            chmod(out_file.c_str(), 0755);
+            make_executable(out_file);
         }
 
         if (out_info) {
@@ -3032,9 +3098,7 @@ public:
 
             size_t slash = swift_file.find_last_of("/\\");
             if (slash != std::string::npos) {
-                std::string dir = swift_file.substr(0, slash);
-                std::string mkdir_cmd = "mkdir -p \"" + dir + "\"";
-                system(mkdir_cmd.c_str());
+                ensure_dir_exists(swift_file.substr(0, slash));
             }
 
             std::string swift_code = SwiftUIEmitter::transpile_script(source_code);
@@ -3069,7 +3133,7 @@ public:
             std::string cs_file = wants_cs_file ? out_file : (out_file + ".cs");
             size_t slash = cs_file.find_last_of("/\\");
             if (slash != std::string::npos) {
-                system(("mkdir -p \"" + cs_file.substr(0, slash) + "\"").c_str());
+                ensure_dir_exists(cs_file.substr(0, slash));
             }
 
             std::ostringstream cs;
@@ -3104,6 +3168,16 @@ public:
             cs_out.close();
 
             if (!wants_cs_file) {
+#if defined(__EMSCRIPTEN__)
+                // External C# compilation skipped inside WASM sandbox; export .cs source
+#elif defined(_WIN32)
+                std::string mcs_cmd = "(where.exe csc >NUL 2>&1 && csc /nologo /out:\"" + out_file + "\" \"" + cs_file + "\" >NUL 2>&1)";
+                if (system(mcs_cmd.c_str()) == 0) {
+                    if (out_created_path) *out_created_path = out_file;
+                    std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m Managed C# assembly compiled to: " << out_file << " [C# / loopize++]\n";
+                    return true;
+                }
+#else
                 std::string mcs_cmd = "(command -v mcs >/dev/null 2>&1 && mcs -out:\"" + out_file + "\" \"" + cs_file + "\" 2>/dev/null) || "
                                       "(command -v csc >/dev/null 2>&1 && csc -out:\"" + out_file + "\" \"" + cs_file + "\" 2>/dev/null)";
                 if (system(mcs_cmd.c_str()) == 0) {
@@ -3111,6 +3185,7 @@ public:
                     std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m Managed C# assembly compiled to: " << out_file << " [C# / loopize++]\n";
                     return true;
                 }
+#endif
             }
             if (out_created_path) *out_created_path = cs_file;
             std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m C# loopize++ source artifact exported to: " << cs_file << " [C# / .OBJ 3D]\n";
@@ -3120,9 +3195,7 @@ public:
         // Create parent directories if needed
         size_t slash = out_file.find_last_of("/\\");
         if (slash != std::string::npos) {
-            std::string dir = out_file.substr(0, slash);
-            std::string mkdir_cmd = "mkdir -p \"" + dir + "\"";
-            system(mkdir_cmd.c_str());
+            ensure_dir_exists(out_file.substr(0, slash));
         }
 
         std::string canonical_source = InvisBinaryCompiler::build_canonical_source(source_code, specs);
@@ -3141,7 +3214,7 @@ public:
             }
             out << "#!/usr/bin/env looping\n" << canonical_source;
             out.close();
-            chmod(out_file.c_str(), 0755);
+            make_executable(out_file);
         } else {
             if (!InvisBinaryCompiler::compile_to_binary(canonical_source, specs, out_file, force_compact, /*silent=*/false, &bin_info)) {
                 return false;
@@ -3154,19 +3227,10 @@ public:
             if (c2_file.size() < 3 || c2_file.substr(c2_file.size() - 3) != ".c2") {
                 c2_file += ".c2";
             }
-            char cwd_buf[2048];
-            std::string abs_c2_file = c2_file;
-            std::string abs_out_file = out_file;
-            if (getcwd(cwd_buf, sizeof(cwd_buf)) != nullptr) {
-                if (abs_c2_file.empty() || abs_c2_file[0] != '/') {
-                    abs_c2_file = std::string(cwd_buf) + "/" + abs_c2_file;
-                }
-                if (abs_out_file.empty() || abs_out_file[0] != '/') {
-                    abs_out_file = std::string(cwd_buf) + "/" + abs_out_file;
-                }
-            }
-            std::string tmp_dir = "/tmp/c2_build_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
-            system(("mkdir -p \"" + tmp_dir + "\"").c_str());
+            std::error_code ec;
+            std::string abs_c2_file = std::filesystem::absolute(c2_file, ec).string();
+            std::string tmp_dir = (std::filesystem::temp_directory_path(ec) / ("c2_build_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()))).string();
+            ensure_dir_exists(tmp_dir);
 
             // 1. Manifest
             std::ofstream mf(tmp_dir + "/manifest.json");
@@ -3210,13 +3274,34 @@ public:
             }
             InvisBinaryCompiler::compile_to_binary(canonical_source, specs, tmp_dir + "/binary.loopb", /*force_compact=*/true, /*silent=*/true);
 
-            // 5. Signature
-            std::string sig_cmd = "(cd \"" + tmp_dir + "\" && shasum -a 256 manifest.json tokens.json layout.json source.loop binary.loopb > signature.sha256)";
-            system(sig_cmd.c_str());
+            // 5. Signature (pure C++ SHA-256 across all bundled artifacts)
+            {
+                std::ofstream sig_f(tmp_dir + "/signature.sha256");
+                for (const char* fname : {"manifest.json", "tokens.json", "layout.json", "source.loop", "binary.loopb"}) {
+                    std::ifstream f_in(tmp_dir + "/" + fname, std::ios::binary);
+                    if (f_in.is_open()) {
+                        std::string bytes((std::istreambuf_iterator<char>(f_in)), std::istreambuf_iterator<char>());
+                        sig_f << CryptoUtils::sha256_hex(bytes) << "  " << fname << "\n";
+                    }
+                }
+            }
 
             // 6. Zip into .c2 (Remove pre-existing file so zip creates a clean new archive)
-            std::string zip_cmd = "rm -f \"" + abs_c2_file + "\" && (cd \"" + tmp_dir + "\" && zip -q -r \"" + abs_c2_file + "\" .) && rm -rf \"" + tmp_dir + "\"";
-            system(zip_cmd.c_str());
+            std::filesystem::remove(abs_c2_file, ec);
+#if defined(__EMSCRIPTEN__)
+            // In WASM, leave virtual directory cleaned up or artifact written
+#elif defined(_WIN32)
+            {
+                std::string zip_cmd = "powershell -NoProfile -Command \"Compress-Archive -Path '" + tmp_dir + "\\*' -DestinationPath '" + abs_c2_file + ".zip' -Force; Move-Item -Force '" + abs_c2_file + ".zip' '" + abs_c2_file + "'\" >NUL 2>&1";
+                system(zip_cmd.c_str());
+            }
+#else
+            {
+                std::string zip_cmd = "(cd \"" + tmp_dir + "\" && zip -q -r \"" + abs_c2_file + "\" .)";
+                system(zip_cmd.c_str());
+            }
+#endif
+            std::filesystem::remove_all(tmp_dir, ec);
             std::cout << "\033[36m📦 [C2 PACKAGER]\033[0m Assembled Android Component 2 package: \033[1m" << abs_c2_file << "\033[0m\n";
         }
 
@@ -3598,14 +3683,28 @@ public:
 
     // Runs an executable artifact or script (supports Standalone Native Binary, LPBN Compact Binary, and .loop scripts)
     static bool run_artifact(const std::string& path) {
+#ifdef __EMSCRIPTEN__
+        (void)path;
+        return false;
+#else
         std::cout << "\033[36m[LAUNCHER]\033[0m Executing artifact: \033[1m" << path << "\033[0m\n";
         std::string host_exe = InvisBinaryCompiler::resolve_host_executable();
         if (host_exe.empty()) host_exe = "looping";
 
+        auto is_abs_or_rel = [](const std::string& p) {
+            if (p.rfind("./", 0) == 0 || p.rfind(".\\", 0) == 0 || (!p.empty() && (p.front() == '/' || p.front() == '\\'))) return true;
+            if (p.size() >= 2 && p[1] == ':') return true;
+            return false;
+        };
+
         InvisBinaryInfo info;
         if (InvisBinaryCompiler::extract_from_file(path, nullptr, &info) && info.valid) {
             if (info.is_standalone_exe) {
-                std::string cmd = (path.rfind("./", 0) == 0 || path.front() == '/') ? ("\"" + path + "\"") : ("./\"" + path + "\"");
+#ifdef _WIN32
+                std::string cmd = "\"" + path + "\"";
+#else
+                std::string cmd = is_abs_or_rel(path) ? ("\"" + path + "\"") : ("./\"" + path + "\"");
+#endif
                 return (system(cmd.c_str()) == 0);
             } else {
                 std::string cmd = "\"" + host_exe + "\" \"" + path + "\"";
@@ -3616,13 +3715,16 @@ public:
         std::string cmd;
         if (path.find(".loop") != std::string::npos || path.find(".ruup") != std::string::npos) {
             cmd = "\"" + host_exe + "\" \"" + path + "\"";
-        } else if (path.rfind("./", 0) == 0 || path.front() == '/') {
-            cmd = "\"" + path + "\"";
         } else {
-            cmd = "./\"" + path + "\"";
+#ifdef _WIN32
+            cmd = "\"" + path + "\"";
+#else
+            cmd = is_abs_or_rel(path) ? ("\"" + path + "\"") : ("./\"" + path + "\"");
+#endif
         }
         int res = system(cmd.c_str());
         return (res == 0);
+#endif
     }
 };
 

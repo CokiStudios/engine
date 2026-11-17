@@ -11,6 +11,12 @@
 #include <array>
 
 #if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #define popen _popen
 #define pclose _pclose
@@ -32,6 +38,12 @@ public:
     }
 
     void detect() {
+#ifdef __EMSCRIPTEN__
+        detected_exe = "";
+        detected_args.clear();
+        is_available = false;
+        return;
+#else
         std::vector<std::pair<std::string, std::vector<std::string>>> candidates;
 #if defined(_WIN32)
         candidates.push_back({"python", {}});
@@ -47,7 +59,11 @@ public:
         for (const auto& [exe, args] : candidates) {
             std::string cmd = exe;
             for (const auto& a : args) cmd += " " + a;
+#if defined(_WIN32)
+            cmd += " -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\" 2>NUL";
+#else
             cmd += " -c \"import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')\" 2>/dev/null";
+#endif
 
             FILE* pipe = popen(cmd.c_str(), "r");
             if (!pipe) continue;
@@ -72,6 +88,7 @@ public:
             }
         }
         is_available = false;
+#endif
     }
 
     std::string get_command_str() const {
@@ -207,7 +224,11 @@ public:
         fputs(py_script.c_str(), f);
         fclose(f);
 
+#if defined(_WIN32)
+        std::string cmd = get_command_str() + " \"" + temp_py_path + "\" 2>NUL";
+#else
         std::string cmd = get_command_str() + " \"" + temp_py_path + "\" 2>/dev/null";
+#endif
         FILE* pipe = popen(cmd.c_str(), "r");
         if (!pipe) {
             remove(temp_py_path.c_str());

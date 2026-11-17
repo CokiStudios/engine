@@ -1052,6 +1052,7 @@ int run_tests() {
                 vm_ch.variables["ch_map_omega"].as_string().find("Omega Looping") != std::string::npos);
 
     // Test 70: Invis. Compile Binary Architecture (.loop -> Binary File Conversion, SHA-256 CTR Zero-Source Exposure & Execution)
+    ensure_dir_exists("build");
     Interpreter vm_invis;
     {
         std::ofstream tmp_loop("build/test_invis_src.loop");
@@ -1258,6 +1259,24 @@ int run_tests() {
 }
 
 int main(int argc, char* argv[]) {
+#ifdef _WIN32
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hOut != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hOut, &dwMode)) {
+            SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+    }
+    HANDLE hErr = GetStdHandle(STD_ERROR_HANDLE);
+    if (hErr != INVALID_HANDLE_VALUE) {
+        DWORD dwMode = 0;
+        if (GetConsoleMode(hErr, &dwMode)) {
+            SetConsoleMode(hErr, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        }
+    }
+#endif
     Interpreter vm;
 
     // Pre-scan channel flags (--channel=<ch>, --channel <ch>, --alpha, --omega, --rc, --prod)
@@ -1373,7 +1392,8 @@ int main(int argc, char* argv[]) {
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " 3D Quantum Engine  : Looping3D Z-Buffer + 120Hz/240Hz Sub-Stepping Physics + Raycast\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " Metal 4 Subsystem   : Apple Metal 4 (M4 Unified Memory Architecture, Hardware Ray Tracing & Mesh Shaders 240Hz)\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " UI Target Profiles : Shine UI (60Hz), XUI (240Hz), flUI (120Hz), SwiftUI (Apple 120Hz), Metal 4 (240Hz), C2 (.c2)\n";
-        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Invis. Compile     : LPBN v3.0A Binary Architecture (SHA-256 CTR + Standalone Native Mach-O/ELF + Auto Cache)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " Invis. Compile     : LPBN v3.0A Binary Architecture (SHA-256 CTR + Standalone Native PE/Mach-O/ELF + Auto Cache)\n";
+        std::cout << "  " << color::GREEN << "✔" << color::RESET << " WebAssembly Port   : Looping C++17 WASM Target (looping_wasm.wasm • 2D/3D Stage & Z-Buffer)\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " Default CS Modules : csid (PKCE S256), csms (E2EE), game_plus (2D/3D), core_utils, audio, ai, invis\n";
         std::cout << "  " << color::GREEN << "✔" << color::RESET << " Crypto Subsystem   : SHA-256, FNV-1a, Base64, UUID v4, CSMS E2EE Key Derivation, CRC32\n\n";
         return 0;
@@ -1852,8 +1872,8 @@ int main(int argc, char* argv[]) {
     // CS ID Connect Authentication: looping auth <login|whoami|logout>
     if (first_arg == "auth") {
         std::string auth_subcmd = (argc >= 3) ? argv[2] : "status";
-        const char* home = getenv("HOME");
-        std::string auth_file = (home ? std::string(home) : ".") + "/.looping_csid_auth";
+        std::string home_str = get_user_home();
+        std::string auth_file = (!home_str.empty() ? home_str : ".") + "/.looping_csid_auth";
 
         if (auth_subcmd == "login") {
             std::cout << color::BOLD << color::CYAN << "[CS ID Connect]" << color::RESET << " Initiating authentication flow for Looping CLI...\n";
@@ -2258,7 +2278,7 @@ int main(int argc, char* argv[]) {
         }
     } else if (success && gui_mode) {
         // Universal 2D/3D Stage GUI Launcher: resolves loop-node-window from any working directory
-        std::string home_dir = getenv("HOME") ? getenv("HOME") : "";
+        std::string home_dir = get_user_home();
         std::string bin_dir = ".";
         std::string argv0_str = argv[0] ? argv[0] : "";
         size_t b_slash = argv0_str.find_last_of("/\\");
@@ -2287,7 +2307,11 @@ int main(int argc, char* argv[]) {
         if (!resolved_nw.empty()) {
             std::cout << color::GREEN << "[2D/3D STAGE LAUNCH]" << color::RESET 
                       << " Launching Universal 2D/3D Quantum Stage (" << resolved_nw << ") for " << script_path << "...\n";
+#ifdef _WIN32
+            std::string cmd = "node \"" + resolved_nw + "\" --game --script \"" + script_path + "\"";
+#else
             std::string cmd = "PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" node \"" + resolved_nw + "\" --game --script \"" + script_path + "\"";
+#endif
             system(cmd.c_str());
         } else {
 #ifdef __APPLE__

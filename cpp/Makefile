@@ -1,22 +1,29 @@
-CXX ?= clang++
-CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread
-
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Darwin)
-    ARCH_FLAGS ?= -arch arm64 -arch x86_64
-else
+ifeq ($(OS),Windows_NT)
+    CXX ?= g++
+    EXE_EXT = .exe
     ARCH_FLAGS ?=
+else
+    CXX ?= clang++
+    EXE_EXT =
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        ARCH_FLAGS ?= -arch arm64 -arch x86_64
+    else
+        ARCH_FLAGS ?=
+    endif
 endif
+
+CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread
 
 SRC = main.cpp
 HEADERS = LoopingValue.hpp Looping3D.hpp LoopingAST.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingCSharpBridge.hpp LoopizeCore.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
 
 ifneq ($(wildcard ../Makefile),)
-    TARGET = ../bin/looping
+    TARGET = ../bin/looping$(EXE_EXT)
 else
-    TARGET = ../../bin/looping
+    TARGET = ../../bin/looping$(EXE_EXT)
 endif
-LOCAL_TARGET = looping
+LOCAL_TARGET = looping$(EXE_EXT)
 
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin

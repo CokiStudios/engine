@@ -188,28 +188,27 @@ class DynamicHTMLWindow extends EventEmitter {
                     return;
                 }
 
-                // Serve Looping Engine Core JS (`/looping_core.js`)
-                if (url.pathname === '/looping_core.js' || url.pathname === '/LoopingEngine/looping_core.js') {
+                // Serve Looping C++17 WebAssembly Thin Host Runtime & WASM Artifacts
+                if (url.pathname === '/looping_runtime.js' ||
+                    url.pathname === '/looping_wasm.js' ||
+                    url.pathname === '/looping_wasm.wasm') {
+                    const assetName = url.pathname.slice(1);
                     const candidates = [
-                        path.join(__dirname, 'looping_core.js'),
-                        path.join(__dirname, '../../web/looping_core.js'),
-                        path.join(__dirname, '../../legacy/node/looping_core.js'),
-                        path.join(__dirname, '../../LoopingEngine/looping_core.js'),
-                        path.join(process.cwd(), 'web/looping_core.js'),
-                        path.join(process.cwd(), 'LoopingEngine/looping_core.js'),
-                        path.join(os.homedir(), 'cokistudios.github.io/LoopingEngine/looping_core.js')
+                        path.join(__dirname, assetName),
+                        path.join(__dirname, '../../web', assetName),
+                        path.join(process.cwd(), 'web', assetName),
+                        path.join(os.homedir(), 'cokistudios.github.io/LoopingEngine', assetName)
                     ];
-                    let coreCode = '';
                     for (const p of candidates) {
                         if (fs.existsSync(p)) {
-                            coreCode = fs.readFileSync(p, 'utf-8');
-                            break;
+                            const isWasm = assetName.endsWith('.wasm');
+                            res.writeHead(200, {
+                                'Content-Type': isWasm ? 'application/wasm' : 'application/javascript; charset=utf-8',
+                                'Cache-Control': 'no-cache'
+                            });
+                            res.end(fs.readFileSync(p));
+                            return;
                         }
-                    }
-                    if (coreCode) {
-                        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
-                        res.end(coreCode);
-                        return;
                     }
                 }
 
@@ -830,17 +829,18 @@ class DynamicHTMLWindow extends EventEmitter {
     </footer>
 
     <script type="module">
-        import { LoopingInterpreter } from '/looping_core.js';
+        import { LoopingInterpreter } from '/looping_runtime.js';
 
         let soundEnabled = true;
         let activeTab = 'game';
         const canvas = document.getElementById('game-stage-canvas');
 
-        // Initialize Looping 2D Interpreter
+        // Initialize Looping C++17 WebAssembly Stage Interpreter
         const runtime = new LoopingInterpreter(canvas, (msg, type) => {
             addLocalLog(msg);
         });
         window.gameRuntime = runtime;
+        await runtime.ready;
 
         // Render Declarative Stage Presets & Algebra Table declared inside .loop
         window.renderDeclarativeLoopUI = function() {
@@ -915,33 +915,20 @@ class DynamicHTMLWindow extends EventEmitter {
         window.activateLoopPreset = function(idx) {
             if (!runtime || !runtime.stagePresets[idx]) return;
             const pr = runtime.stagePresets[idx];
-            const p = runtime.getPlayer();
-            if (p) {
-                p.x = pr.x; p.y = pr.y; p.vx = 0; p.vy = -120;
-                p.spawnX = pr.x; p.spawnY = pr.y;
-                p.overdrive = Boolean(pr.overdrive);
-            }
-            if (pr.weather) runtime.scenario.weather = pr.weather;
-            if (pr.gravity) runtime.gravity = pr.gravity;
-            runtime.scenario.name = pr.label;
+            runtime.activatePreset(idx);
             const badge = document.getElementById('fb-active-stage-badge');
             if (badge) badge.textContent = 'Escenario Activo: ' + pr.label;
-            runtime.playSfx('pad');
-            if (p) {
-                runtime.addPopup(p.x, p.y - 16, '🗺️ ' + pr.label, pr.color || '#38bdf8');
-                runtime.spawnParticleBurst(p.x + 16, p.y + 20, pr.color || '#38bdf8', 26);
-            }
         };
 
         window.toggle3DLayer = function() {
-            if (!runtime || !runtime.camera3D) return;
-            runtime.camera3D.enabled = !runtime.camera3D.enabled;
+            if (!runtime) return;
+            runtime.toggle3DLayer();
             runtime.addPopup(runtime.camera.x + 340, 80, runtime.camera3D.enabled ? '🧊 CAPA 3D ACTIVA' : '🧊 CAPA 3D OCULTA', '#c084fc');
         };
 
         window.toggleBulletTime = function() {
             if (!runtime) return;
-            runtime.timeScale = runtime.timeScale < 0.8 ? 1.0 : 0.42;
+            runtime.setTimeScale(runtime.timeScale < 0.8 ? 1.0 : 0.42);
             runtime.addPopup(runtime.camera.x + 340, 80, runtime.timeScale < 0.8 ? '⏱️ BULLET-TIME 0.4x' : '⏱️ VELOCIDAD 1.0x', '#00f5d4');
         };
 
@@ -1055,6 +1042,7 @@ class DynamicHTMLWindow extends EventEmitter {
 
         window.toggleSound = function() {
             soundEnabled = !soundEnabled;
+            if (runtime) runtime.soundEnabled = soundEnabled;
             const btn = document.getElementById('sound-btn');
             btn.textContent = soundEnabled ? '🔊 Sonido ON' : '🔇 Sonido OFF';
         };

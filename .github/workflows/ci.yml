@@ -8,28 +8,90 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Verify (macOS / Linux)
+    name: Build & Verify (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Compile C++17 Looping Engine
+      - name: Compile C++17 Looping Engine (Unix)
+        if: runner.os != 'Windows'
         run: |
           make -C cpp
 
-      - name: Run Looping Native Test Suite (71/71 — v1.1 / Arch 3.0A)
+      - name: Run Looping Native Test Suite (Unix)
+        if: runner.os != 'Windows'
         run: |
           ./bin/looping test
           ./bin/looping --version
           ./bin/looping --omega --version
           ./bin/looping --alpha --version
 
-      - name: Verify smiledev Package Manager CLI (v1.1 & Alpha! 1.1A)
+      - name: Verify smiledev Package Manager CLI (Unix)
+        if: runner.os != 'Windows'
         run: |
           ./bin/smiledev version
           ./bin/smiledev version --alpha
           ./bin/smiledev help
+
+      - name: Compile C++17 Looping Engine & Run Native Tests (Windows MSVC)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\scripts\build-windows.ps1 -Toolchain msvc -RunTests
+          .\bin\looping.exe --omega --version
+          .\bin\looping.exe --alpha --version
+
+      - name: Verify smiledev CLI on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\bin\smiledev.cmd version
+          .\bin\smiledev.cmd version --alpha
+          $env:LOOPING_SMILEDEV_PWSH = "1"
+          .\bin\smiledev.ps1 version
+          .\bin\smiledev.ps1 doctor
+
+  wasm-build-and-test:
+    name: Build & Verify C++17 WebAssembly
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compile C++17 Engine to WebAssembly
+        run: |
+          chmod +x scripts/build-wasm.sh
+          ./scripts/build-wasm.sh
+
+      - name: Verify WebAssembly Runtime & 2D/3D/Invis Self-Test
+        run: |
+          node --input-type=module -e '
+            import assert from "node:assert/strict";
+            import fs from "node:fs";
+            import { LoopingWasmRuntime, LoopingInterpreter } from "./web/looping_runtime.js";
+            assert.equal(LoopingInterpreter, LoopingWasmRuntime);
+            const rt = new LoopingWasmRuntime(null, { autoStart: false });
+            await rt.ready;
+            const st = rt.runSelftest();
+            console.log("WASM Self-Test:", st);
+            assert.equal(st.passed, st.total);
+            const r3d = rt.execute(fs.readFileSync("./samples/cyber_odyssey_3d.loop", "utf8"));
+            assert.ok(r3d.ok && rt.is3DMode);
+            rt.step(0.016);
+            assert.ok((rt.api.lp_render_3d_rgba(rt.handle, 96, 64) >>> 0) > 0);
+            rt.destroy();
+          '

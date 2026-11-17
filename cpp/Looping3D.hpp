@@ -1317,21 +1317,24 @@ struct Scene3D {
         return closest;
     }
 
-    std::string render_tui(int cols = 74, int char_rows = 20) const {
-        cols = std::clamp(cols, 32, 140);
-        char_rows = std::clamp(char_rows, 10, 60);
-        int px_w = cols;
-        int px_h = char_rows * 2;
-
-        std::vector<RGBColor> fb(px_w * px_h);
-        std::vector<double> zb(px_w * px_h, std::numeric_limits<double>::infinity());
+    void render_framebuffer(std::vector<RGBColor>& fb, int px_w, int px_h,
+                            const std::vector<Entity3D>* extra_entities = nullptr) const {
+        px_w = std::clamp(px_w, 16, 1920);
+        px_h = std::clamp(px_h, 16, 1080);
+        fb.resize(static_cast<size_t>(px_w) * px_h);
+        std::vector<double> zb(static_cast<size_t>(px_w) * px_h, std::numeric_limits<double>::infinity());
 
         // 1. Skybox & Horizon Gradient
+        RGBColor sky_top{6, 10, 24};
+        RGBColor sky_mid{14, 28, 62};
+        RGBColor ground_dark{8, 13, 26};
+        if (sky_preset == "sunset" || sky_preset == "solar") {
+            sky_top = {26, 12, 38}; sky_mid = {88, 34, 68}; ground_dark = {18, 12, 24};
+        } else if (sky_preset == "void") {
+            sky_top = {4, 4, 12}; sky_mid = {18, 10, 36}; ground_dark = {5, 6, 14};
+        }
         for (int y = 0; y < px_h; ++y) {
             double t = static_cast<double>(y) / std::max(1, px_h - 1);
-            RGBColor sky_top{6, 10, 24};
-            RGBColor sky_mid{14, 28, 62};
-            RGBColor ground_dark{8, 13, 26};
             RGBColor c;
             if (t < 0.52) {
                 double k = t / 0.52;
@@ -1344,15 +1347,15 @@ struct Scene3D {
                 c.g = static_cast<uint8_t>(sky_mid.g * (1.0 - k) + ground_dark.g * k);
                 c.b = static_cast<uint8_t>(sky_mid.b * (1.0 - k) + ground_dark.b * k);
             }
-            for (int x = 0; x < px_w; ++x) fb[y * px_w + x] = c;
+            std::fill_n(&fb[static_cast<size_t>(y) * px_w], px_w, c);
         }
 
-        // Resolve camera auto-focus if player exists and cam_mode == chase
+        // Resolve camera focus
         Vec3 eye = cam_pos;
         Vec3 target = cam_target;
         for (const auto& e : entities) {
             if (e.type == "player") {
-                if (cam_mode == "chase") {
+                if (cam_mode == "chase" && (eye - cam_pos).length_sq() < 1e-9 && cam_pos.x == 0 && cam_pos.z == -18.0) {
                     eye = e.pos + Vec3{0.0, 6.5, -14.5};
                     target = e.pos + Vec3{0.0, 1.8, 10.0};
                 }
@@ -1398,11 +1401,11 @@ struct Scene3D {
         // 2. Perspective Cyber Grid Floor (y = 0)
         if (show_grid) {
             RGBColor grid_col{24, 62, 108};
-            for (int gz = -20; gz <= 90; gz += 6) {
+            for (int gz = -20; gz <= 160; gz += 8) {
                 draw_line_3d({-48.0, 0.0, static_cast<double>(gz)}, {48.0, 0.0, static_cast<double>(gz)}, grid_col);
             }
-            for (int gx = -48; gx <= 48; gx += 6) {
-                draw_line_3d({static_cast<double>(gx), 0.0, -16.0}, {static_cast<double>(gx), 0.0, 90.0}, grid_col);
+            for (int gx = -48; gx <= 48; gx += 8) {
+                draw_line_3d({static_cast<double>(gx), 0.0, -20.0}, {static_cast<double>(gx), 0.0, 160.0}, grid_col);
             }
         }
 
@@ -1416,6 +1419,7 @@ struct Scene3D {
             int max_x = std::min(px_w - 1, static_cast<int>(std::ceil(std::max({p0.x, p1.x, p2.x}))));
             int min_y = std::max(0, static_cast<int>(std::floor(std::min({p0.y, p1.y, p2.y}))));
             int max_y = std::min(px_h - 1, static_cast<int>(std::ceil(std::max({p0.y, p1.y, p2.y}))));
+            if (min_x > max_x || min_y > max_y) return;
 
             double area = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
             if (std::abs(area) < 1e-6) return;
@@ -1436,19 +1440,19 @@ struct Scene3D {
             }
         };
 
-        for (const auto& e : entities) {
-            if (e.type == "terrain") continue;
+        auto draw_entity = [&](const Entity3D& e) {
+            if (e.type == "terrain" || e.health <= -9999.0) return;
             Mesh3D mesh;
             if (e.has_custom_mesh && !e.custom_mesh.vertices.empty()) {
                 mesh = e.custom_mesh;
             } else if (!e.obj_file.empty()) {
                 mesh = make_preset_obj_mesh(e.obj_file);
-            } else if (e.type == "sphere") {
-                mesh = make_sphere_mesh(e.radius, 5, 8);
+            } else if (e.type == "sphere" || e.type == "particle" || e.type == "projectile") {
+                mesh = make_sphere_mesh(e.radius, 4, 6);
             } else if (e.type == "pyramid") {
                 mesh = make_pyramid_mesh(e.size.x, e.size.y, e.size.z);
-            } else if (e.type == "crystal" || e.type == "ring" || e.type == "portal") {
-                mesh = make_octahedron_mesh(std::max(0.8, e.radius));
+            } else if (e.type == "crystal" || e.type == "ring" || e.type == "portal" || e.type == "heart" || e.type == "checkpoint") {
+                mesh = make_octahedron_mesh(std::max(0.6, e.radius));
             } else if (e.type == "player") {
                 mesh = make_starfighter_mesh();
             } else {
@@ -1500,9 +1504,39 @@ struct Scene3D {
                     raster_tri(p0, p1, p2, shaded);
                 }
             }
-        }
+        };
 
-        // 4. Emit Unicode Half-Block TrueColor Frame
+        for (const auto& e : entities) draw_entity(e);
+        if (extra_entities) {
+            for (const auto& e : *extra_entities) draw_entity(e);
+        }
+    }
+
+    void render_rgba(std::vector<uint8_t>& rgba_out, int px_w, int px_h,
+                     const std::vector<Entity3D>* extra_entities = nullptr) const {
+        px_w = std::clamp(px_w, 16, 1920);
+        px_h = std::clamp(px_h, 16, 1080);
+        std::vector<RGBColor> fb;
+        render_framebuffer(fb, px_w, px_h, extra_entities);
+        rgba_out.resize(static_cast<size_t>(px_w) * px_h * 4);
+        for (size_t i = 0; i < fb.size(); ++i) {
+            rgba_out[i * 4 + 0] = fb[i].r;
+            rgba_out[i * 4 + 1] = fb[i].g;
+            rgba_out[i * 4 + 2] = fb[i].b;
+            rgba_out[i * 4 + 3] = 255;
+        }
+    }
+
+    std::string render_tui(int cols = 74, int char_rows = 20) const {
+        cols = std::clamp(cols, 32, 140);
+        char_rows = std::clamp(char_rows, 10, 60);
+        int px_w = cols;
+        int px_h = char_rows * 2;
+
+        std::vector<RGBColor> fb;
+        render_framebuffer(fb, px_w, px_h);
+
+        // Emit Unicode Half-Block TrueColor Frame
         std::ostringstream ss;
         ss << "\n  \033[1;36m╔";
         for (int i = 0; i < cols; ++i) ss << "═";

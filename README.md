@@ -7,7 +7,7 @@
 [![Architecture](https://img.shields.io/badge/arch-3.0A%20Quantum%203D-10b981.svg?style=flat-square)](https://cokistudios.github.io/developer.html)
 [![Tests](https://img.shields.io/badge/tests-71%2F71%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 [![License](https://img.shields.io/badge/license-MIT-f59e0b.svg?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20Universal%20%7C%20Linux%20%7C%20POSIX-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Universal%20%7C%20Linux%20%7C%20WebAssembly-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 
 ---
 
@@ -61,7 +61,21 @@ tar -xzf looping-v1.1-darwin-universal.tar.gz
 sudo mv looping smiledev /usr/local/bin/
 ```
 
-### Opción 3: Compilación desde el Código Fuente
+### Opción 3: Instalación en Windows (PowerShell + MSVC / MinGW / CMake)
+```powershell
+git clone https://github.com/CokiStudios/engine.git
+cd engine
+.\scripts\build-windows.ps1
+.\install.ps1 -Verify
+```
+Uso rápido en Windows:
+```powershell
+looping.exe --version
+looping.exe test
+smiledev.cmd version
+```
+
+### Opción 4: Compilación desde el Código Fuente (Linux / macOS)
 Requiere un compilador compatible con C++17 (`clang++` o `g++`):
 ```bash
 git clone https://github.com/CokiStudios/engine.git
@@ -69,6 +83,16 @@ cd engine
 make
 make test
 sudo make install
+```
+
+### Opción 5: Compilación WebAssembly C++17 (Emscripten)
+Genera `web/looping_wasm.js` + `web/looping_wasm.wasm` directamente desde `cpp/LoopingWasm.cpp`:
+```bash
+./scripts/build-wasm.sh
+```
+En Windows PowerShell (con `em++` nativo o WSL Ubuntu `emsdk`):
+```powershell
+.\scripts\build-wasm.ps1
 ```
 
 ---
@@ -123,14 +147,14 @@ smiledev test
 
 ## 📂 Estructura del Repositorio
 
-* [`cpp/`](cpp/): Código fuente nativo en C++17 (`Looping3D.hpp`, Lexer, Parser, AST, Compilador, Intérprete, REPL, SwiftUI TUI y Native Window).
-* [`bin/`](bin/): Binarios precompilados universales (`looping`, `smiledev`).
+* [`cpp/`](cpp/): Código fuente nativo en C++17 (`Looping3D.hpp`, `LoopingStage.hpp`, `LoopingWasm.cpp`, Lexer, Parser, AST, Compilador, Intérprete, REPL, SwiftUI TUI y Native Window).
+* [`bin/`](bin/): Binarios precompilados y wrappers multiplataforma (`looping`, `looping.exe`, `ruuping.cmd`, `smiledev`, `smiledev.cmd`, `smiledev.ps1`).
+* [`scripts/`](scripts/): Scripts de compilación nativa Windows (`build-windows.ps1`), WebAssembly (`build-wasm.sh`, `build-wasm.ps1`) y empaquetado macOS.
 * [`modules/`](modules/): Módulos estándar comunitarios e híbridos (`loop-math-3d` v2.0.0, `loop-game-plus` v2.0.0, `loop-core-utils`, `csid-login-button`, `loop-node-window`, `loop-gui-qt`, `loop-gui-tk`, etc.).
 * [`samples/`](samples/): Ejemplos completos de videojuegos 3D y 2D (`cyber_odyssey_3d.loop`), dashboards SwiftUI, pipelines y algoritmos.
 * [`c2/`](c2/): Especificación de interfaz declarativa C2 y perfiles de tema (`aqua_nomad_ui.c2`, `cyber_neon_xui.c2`, etc.).
-* [`extensions/`](extensions/): Extensión oficial de Visual Studio Code (`vscode-looping-cs-core` v1.1.0) con visor `.c2` e inspector 2D/3D.
-* [`web/`](web/): Portal de descargas, motor Web Core Canvas 2D/3D (`looping_core.js`) y el GUI oficial [`smiledev.html`](web/smiledev.html).
-* [`legacy/`](legacy/): Archivo histórico del prototipo original en Node.js previo a la transición a C++17.
+* [`extensions/`](extensions/): Extensión oficial de Visual Studio Code (`vscode-looping-cs-core` v1.1.0) con visor `.c2` e inspector 2D/3D impulsado por C++17 WebAssembly.
+* [`web/`](web/): Portal de descargas con Playground interactivo C++17 WebAssembly (`looping_wasm.wasm`, `looping_wasm.js`, `looping_runtime.js`) y el GUI oficial [`smiledev.html`](web/smiledev.html).
 * [`debian/`](debian/): Metadatos de empaquetado para distribuciones Linux basadas en Debian / Ubuntu.
 * [`docs/`](docs/): Especificación formal del lenguaje, canales de nomenclatura, `smiledev` y subsistema de módulos.
 * [`Formula/`](Formula/): Fórmulas oficiales de Homebrew (`looping.rb`, `smiledev.rb`, `smiledev-alpha.rb`).

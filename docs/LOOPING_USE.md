@@ -768,7 +768,7 @@ define game "QuantumRunner2D" version 2.8:
 
 ## 20. Motor de Videojuegos 3D Quantum (Perspectiva, Z-Buffer & Física 120Hz+)
 
-A partir de **Arch 3.0A (Looping v1.2 Commercial)**, el motor incorpora capacidades completas de **juego 3D en tiempo real** tanto en el núcleo nativo C++17 (`Looping3D.hpp` + TUI Z-Buffer + Viewport OS nativo) como en el runtime interactivo Web (`looping_core.js` a 60/120 FPS con sub-stepping físico a 240Hz).
+A partir de **Arch 3.0A (Looping v1.2 Commercial)**, el motor incorpora capacidades completas de **juego 3D en tiempo real** tanto en el núcleo nativo C++17 (`Looping3D.hpp` + TUI Z-Buffer + Viewport OS nativo) como en el runtime interactivo Web compilado a WebAssembly (`looping_wasm.wasm` + `web/looping_runtime.js` a 60/120 FPS con sub-stepping físico a 240Hz).
 
 ### 20.1 Ejemplo Declarativo de Juego 3D (`define game3d`)
 ```looping

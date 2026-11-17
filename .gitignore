@@ -2,6 +2,9 @@
 cpp/looping
 build/
 *.o
+*.obj
+*.ilk
+*.pdb
 *.a
 *.dylib
 *.out
