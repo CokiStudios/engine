@@ -8,9 +8,9 @@
 
 set -e
 
-SMILE_VERSION="1.1"
-SMILE_ALPHA_VERSION="1.1A"
-SMILE_ARCH_VERSION="3.0A"
+SMILE_VERSION="1.1.2"
+SMILE_ALPHA_VERSION="1.1.2A"
+SMILE_ARCH_VERSION="3.1A"
 if [ -z "${HOME:-}" ] && [ -n "${USERPROFILE:-}" ]; then
     HOME="$USERPROFILE"
 fi
@@ -67,7 +67,7 @@ fi
 resolve_channel_brand() {
     local ch="$(echo "${1:-$SMILE_CHANNEL}" | tr '[:upper:]' '[:lower:]')"
     case "$ch" in
-        alpha|alpha!|1.1a|alpha-1.1a|experimental|super-experimental)
+        alpha|alpha!|1.1a|alpha-1.1a|1.1.2a|alpha-1.1.2a|experimental|super-experimental)
             echo "Alpha! SmileDev|Super Experimental|${SMILE_ALPHA_VERSION}|alpha"
             ;;
         omega|rc|release-candidate)
@@ -135,9 +135,9 @@ cmd_help() {
     echo -e "  ${C_AQUA}version${C_RESET}                Display current version & release channel nomenclature"
     echo ""
     echo -e "${C_BOLD}RELEASE CHANNELS:${C_RESET}"
-    echo -e "  • ${C_GREEN}Looping${C_RESET}        (prod / stable) : Official Production Release (v1.1 / Arch 3.0A)"
-    echo -e "  • ${C_YELLOW}Omega Looping${C_RESET}  (omega / rc)    : Release Candidate (RC) builds (v1.1-omega)"
-    echo -e "  • ${C_PINK}Alpha! 1.1A${C_RESET}    (alpha)         : Super Experimental builds (Alpha! SmileDev & Looping)"
+    echo -e "  • ${C_GREEN}Looping${C_RESET}        (prod / stable) : Official Production Release (v1.1.2 / Arch 3.1A)"
+    echo -e "  • ${C_YELLOW}Omega Looping${C_RESET}  (omega / rc)    : Release Candidate (RC) builds (v1.1.2-omega)"
+    echo -e "  • ${C_PINK}Alpha! 1.1.2A${C_RESET}  (alpha)         : Super Experimental builds (Alpha! SmileDev & Looping)"
     echo ""
     echo -e "${C_BOLD}EXAMPLES:${C_RESET}"
     echo -e "  smiledev install loop-core-utils"
@@ -2142,7 +2142,7 @@ cmd_upgrade() {
             --force|-f) force_flag=true ;;
             --channel=*) req_channel="${1#*=}" ;;
             --channel|-c) shift || true; req_channel="${1:-prod}" ;;
-            --alpha|--alpha!|--1.1a|--1.1A) req_channel="alpha" ;;
+            --alpha|--alpha!|--1.1a|--1.1A|--1.1.2a|--1.1.2A) req_channel="alpha" ;;
             --omega|--rc) req_channel="omega" ;;
             --prod|--stable) req_channel="prod" ;;
         esac
@@ -2418,7 +2418,7 @@ cmd_doctor() {
         case "$1" in
             --channel=*) SMILE_CHANNEL="${1#*=}" ;;
             --channel|-c) shift || true; SMILE_CHANNEL="${1:-prod}" ;;
-            --alpha|--alpha!|--1.1a|--1.1A) SMILE_CHANNEL="alpha" ;;
+            --alpha|--alpha!|--1.1a|--1.1A|--1.1.2a|--1.1.2A) SMILE_CHANNEL="alpha" ;;
             --omega|--rc) SMILE_CHANNEL="omega" ;;
             --prod|--stable) SMILE_CHANNEL="prod" ;;
         esac
@@ -2644,7 +2644,7 @@ case "$1" in
             case "$1" in
                 --channel=*) SMILE_CHANNEL="${1#*=}" ;;
                 --channel|-c) shift || true; SMILE_CHANNEL="${1:-prod}" ;;
-                --alpha|--alpha!|--1.1a|--1.1A) SMILE_CHANNEL="alpha" ;;
+                --alpha|--alpha!|--1.1a|--1.1A|--1.1.2a|--1.1.2A) SMILE_CHANNEL="alpha" ;;
                 --omega|--rc) SMILE_CHANNEL="omega" ;;
                 --prod|--stable) SMILE_CHANNEL="prod" ;;
             esac

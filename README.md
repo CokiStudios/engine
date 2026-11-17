@@ -1,13 +1,13 @@
 # ⚡ Looping Engine & smiledev
-> **Looping v1.1 — Production Release & Alpha! 1.1A for smiledev (Architecture 3.0A Quantum 3D Synthesis)**  
+> **Looping v1.1.2 — Production Release & Alpha! 1.1.2A for smiledev (Architecture 3.1A Quantum 3D Synthesis & DirectX 11 Windows)**  
 > *The Dual Hybrid High-Performance 2D/3D Language & Game Engine by Coki Studios & Holo Entertainment*
 
-[![Release](https://img.shields.io/badge/release-v1.1%20Production-38bdf8.svg?style=flat-square)](https://github.com/CokiStudios/engine/releases/tag/v1.1)
-[![Alpha](https://img.shields.io/badge/alpha!-1.1A%20smiledev-f43f5e.svg?style=flat-square)](https://repo.cokistudios.com/engine)
-[![Architecture](https://img.shields.io/badge/arch-3.0A%20Quantum%203D-10b981.svg?style=flat-square)](https://cokistudios.github.io/developer.html)
-[![Tests](https://img.shields.io/badge/tests-71%2F71%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
+[![Release](https://img.shields.io/badge/release-v1.1.2%20Production-38bdf8.svg?style=flat-square)](https://github.com/CokiStudios/engine/releases/tag/v1.1.2)
+[![Alpha](https://img.shields.io/badge/alpha!-1.1.2A%20smiledev-f43f5e.svg?style=flat-square)](https://repo.cokistudios.com/engine)
+[![Architecture](https://img.shields.io/badge/arch-3.1A%20Quantum%203D%20%2B%20DX11-10b981.svg?style=flat-square)](https://cokistudios.github.io/developer.html)
+[![Tests](https://img.shields.io/badge/tests-78%2F78%20passing-a855f7.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 [![License](https://img.shields.io/badge/license-MIT-f59e0b.svg?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64%20%7C%20macOS%20Universal%20%7C%20Linux%20%7C%20WebAssembly-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64%20(DX11)%20%7C%20macOS%20Universal%20%7C%20Linux%20%7C%20WebAssembly-64748b.svg?style=flat-square)](https://github.com/CokiStudios/engine)
 
 ---
 
@@ -17,9 +17,9 @@ El ecosistema Looping se distribuye bajo **tres niveles oficiales de nomenclatur
 
 | Canal / Nombre Oficial | Rol | Flag CLI | Descripción |
 | :--- | :--- | :--- | :--- |
-| ⚡ **`Looping`** | **Producción (Stable)** | `--channel=prod` | Versión oficial estable de producción (**actual: `v1.1` / `Arch 3.0A`**). Lista para despliegue comercial y aplicaciones críticas. |
-| 🧬 **`Omega Looping`** | **Release Candidate (RC)** | `--channel=omega` | Builds candidatas a lanzamiento (RC) con congelación de APIs y validación QA previa a promoción a producción (`v1.1-omega`). |
-| 🧪 **`Alpha! 1.1A`** | **Super Experimental** | `--channel=alpha` | Builds súper experimentales de laboratorio para `smiledev` (`Alpha! 1.1A`) y `Alpha! Looping` (`v1.1-alpha`) con Metal 4, terminal persistente (`-i`) y prototipado Arch 3.0A. |
+| ⚡ **`Looping`** | **Producción (Stable)** | `--channel=prod` | Versión oficial estable de producción (**actual: `v1.1.2` / `Arch 3.1A`**). Ventanas dinámicas DirectX 11 + Direct2D en Windows, `LoopNativeWindow` con `pygame`/`_PygameCompat` y evaluador `py!()` nativo sin Python. |
+| 🧬 **`Omega Looping`** | **Release Candidate (RC)** | `--channel=omega` | Builds candidatas a lanzamiento (RC) con congelación de APIs y validación QA previa a promoción a producción (`v1.1.2-omega`). |
+| 🧪 **`Alpha! 1.1.2A`** | **Super Experimental** | `--channel=alpha` | Builds súper experimentales de laboratorio para `smiledev` (`Alpha! 1.1.2A`) y `Alpha! Looping` (`v1.1.2-alpha`) con Metal 4, DirectX 11, terminal persistente (`-i`) y prototipado Arch 3.1A. |
 
 ---
 
@@ -32,7 +32,7 @@ El ecosistema Looping se distribuye bajo **tres niveles oficiales de nomenclatur
 * **Módulos Integrados del Ecosistema CS**: `csid` (OAuth 2.1 PKCE S256), `csms` (Cifrado E2EE con derivación SHA-256), `game_plus` (2D/3D) y `core_utils`.
 * **Arranque Instantáneo**: Menos de **0.5 ms** en C++17 nativo sin dependencias de Node.js ni contenedores web.
 
-Todas las versiones de arquitectura están catalogadas bajo la serie oficial (**3.0A**, **2.8A**, **2.7A**, **2.6A**, **2.5A**, **2.0A**, **1.0A**).
+Todas las versiones de arquitectura están catalogadas bajo la serie oficial (**3.1A**, **3.0A**, **2.8A**, **2.7A**, **2.6A**, **2.5A**, **2.0A**, **1.0A**).
 
 ---
 
@@ -97,9 +97,9 @@ En Windows PowerShell (con `em++` nativo o WSL Ubuntu `emsdk`):
 
 ---
 
-## 🕹️ Motor de Videojuegos 3D & 2D (Arch 3.0A)
+## 🕹️ Motor de Videojuegos 3D & 2D (Arch 3.1A)
 
-Looping v1.1 incorpora directivas declarativas 3D de primera clase (`define game3d`, `scene3d.*`, `camera3d.set`, `light3d.*`, `physics3d.*`, `spawn3d.*`):
+Looping v1.1.2 incorpora directivas declarativas 3D de primera clase (`define game3d`, `scene3d.*`, `camera3d.set`, `light3d.*`, `physics3d.*`, `spawn3d.*`), renderizado nativo DirectX 11 + Direct2D en Windows y `LoopNativeWindow` con soporte dual `pygame` / `_PygameCompat`:
 
 ```loop
 define game3d "CyberOdyssey3D" version 1.1:
@@ -134,9 +134,9 @@ smiledev version --omega
 smiledev version --alpha
 
 # Actualizar motor según el canal deseado
-smiledev upgrade --channel=prod     # Looping & smiledev v1.1 (Producción)
+smiledev upgrade --channel=prod     # Looping & smiledev v1.1.2 (Producción / Arch 3.1A)
 smiledev upgrade --channel=omega    # Omega Looping (Release Candidate / RC)
-smiledev upgrade --alpha            # Alpha! 1.1A (Super Experimental para smiledev & Looping)
+smiledev upgrade --alpha            # Alpha! 1.1.2A (Super Experimental para smiledev & Looping)
 
 # Instalar módulos desde el registro
 smiledev add loop-math-3d
@@ -166,7 +166,8 @@ smiledev test
 
 | Serie / Canal | Versión | Fecha Hito | Hitos Principales |
 | :--- | :--- | :--- | :--- |
-| **Looping & smiledev (Prod / Alpha! 1.1A)** | **v1.1 / 1.1A (Arch 3.0A)** | **11 Nov 2026** | **Producción v1.1 & Alpha! 1.1A para smiledev**. Modo terminal persistente (`-i` / `--persistent`), Apple Metal 4 (`metal4.*`, `240Hz ProMotion`), canal `Alpha! 1.1A`, Motor 3D Quantum (`Looping3D.hpp`, Z-Buffer, Raycast), módulos CS integrados y **71/71 tests C++ nativos**. |
+| **Looping & smiledev (Prod / Alpha! 1.1.2A)** | **v1.1.2 / Arch 3.1A** | **17 Nov 2026** | **Ventanas dinámicas nativas DirectX 11 + Direct2D + DirectWrite en Windows** (`--dx-window`, `.dxwin`), **`LoopNativeWindow` Python con soporte `pygame` + réplica pura `_PygameCompat`**, evaluador C++17 `py!(...)` sin dependencia de subproceso Python y **78/78 tests C++ nativos**. |
+| Producción | **v1.1 / Arch 3.0A** | 11 Nov 2026 | Modo terminal persistente (`-i` / `--persistent`), Apple Metal 4 (`metal4.*`, `240Hz ProMotion`), Motor 3D Quantum (`Looping3D.hpp`, Z-Buffer, Raycast), port C++17 WebAssembly y Windows x64. |
 | Producción | **v1.0.0 / Arch 2.8A** | 27 Oct 2026 | Primera versión de producción. Motor 2D Quantum, `loop-node-window` v2.0.0, 57/57 tests C++ nativos. |
 | Arquitectura | **2.8A** | 26 Oct 2026 | SwiftUI TUI, Cripto CSMS (`crc32`, `constant_time_eq`), CSV y DateTime stdlib. |
 | Arquitectura | **2.7A** | 19 Oct 2026 | Integración con Eco Hub, match multi-patrón `\|`, rangos `..=` y pipelines funcionales. |

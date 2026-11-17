@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
 # ♾️ COKI STUDIOS — LOOPING ENGINE & SMILEDEV NATIVE INSTALLER
-# Universal macOS (arm64 + x86_64) • v1.1 (Arch 3.0A)
+# Universal macOS (arm64 + x86_64) • v1.1.2 (Arch 3.1A)
 # Channels: Looping (Prod) • Omega Looping (RC) • Alpha! Looping (Super Exp)
 # Hosted on: https://repo.cokistudios.com/engine
 # ═══════════════════════════════════════════════════════════════
@@ -22,7 +22,7 @@ while [[ "$#" -gt 0 ]]; do
     case "$1" in
         --channel=*) CHANNEL="${1#*=}" ;;
         --channel|-c) shift || true; CHANNEL="${1:-prod}" ;;
-        --alpha|--alpha!|--1.1a|--1.1A) CHANNEL="alpha" ;;
+        --alpha|--alpha!|--1.1a|--1.1A|--1.1.2a|--1.1.2A) CHANNEL="alpha" ;;
         --omega|--rc) CHANNEL="omega" ;;
         --prod|--stable) CHANNEL="prod" ;;
     esac
@@ -31,10 +31,10 @@ done
 
 CHANNEL_LC="$(echo "$CHANNEL" | tr '[:upper:]' '[:lower:]')"
 case "$CHANNEL_LC" in
-    alpha|alpha!|1.1a|alpha-1.1a|experimental|super-experimental)
+    alpha|alpha!|1.1a|alpha-1.1a|1.1.2a|alpha-1.1.2a|experimental|super-experimental)
         BRAND_NAME="Alpha! SmileDev & Looping"
         TIER_LABEL="Super Experimental"
-        VERSION="1.1A"
+        VERSION="1.1.2A"
         CH_KEY="alpha"
         TAR_NAME="looping-v1.1A-darwin-universal.tar.gz"
         TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
@@ -42,22 +42,22 @@ case "$CHANNEL_LC" in
     omega|rc|release-candidate)
         BRAND_NAME="Omega Looping"
         TIER_LABEL="Release Candidate (RC)"
-        VERSION="1.1-omega"
+        VERSION="1.1.2-omega"
         CH_KEY="omega"
         TAR_NAME="looping-v1.1-darwin-universal.tar.gz"
-        TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
+        TARBALL_SHA256="637849682c006e5fb7a8bf8b573c406b9a2910878f6cd9ff71a517812ac24f2d"
         ;;
     *)
         BRAND_NAME="Looping"
         TIER_LABEL="Production Release"
-        VERSION="1.1"
+        VERSION="1.1.2"
         CH_KEY="prod"
         TAR_NAME="looping-v1.1-darwin-universal.tar.gz"
-        TARBALL_SHA256="6494f61686a699aab2715b3ed9cca3778a7dd5cd35ab4859d5fbf7f4d2193b7d"
+        TARBALL_SHA256="637849682c006e5fb7a8bf8b573c406b9a2910878f6cd9ff71a517812ac24f2d"
         ;;
 esac
 
-ARCH_VER="3.0A"
+ARCH_VER="3.1A"
 PRIMARY_URL="https://repo.cokistudios.com/engine/${TAR_NAME}"
 FALLBACK_URL1="https://cokistudios.github.io/engine/${TAR_NAME}"
 FALLBACK_URL2="https://github.com/CokiStudios/engine/releases/download/v1.1/${TAR_NAME}"
@@ -159,9 +159,9 @@ fi
 
 echo ""
 echo -e "${C_BOLD}QUICK START:${C_RESET}"
-echo -e "  ${C_CYAN}looping${C_RESET}                        Interactive REPL (Prod v1.1 / Arch 3.0A)"
+echo -e "  ${C_CYAN}looping${C_RESET}                        Interactive REPL (Prod v1.1.2 / Arch 3.1A)"
 echo -e "  ${C_CYAN}looping run <file.loop>${C_RESET}        Execute a 2D/3D .loop script (-i for persistent)"
 echo -e "  ${C_CYAN}looping preview3d <file.loop>${C_RESET}  TrueColor Z-Buffer 3D terminal preview"
-echo -e "  ${C_CYAN}looping test${C_RESET}                   Run native test suite (71/71 tests)"
-echo -e "  ${C_CYAN}smiledev upgrade --alpha${C_RESET}       Switch channel (prod [1.1] | omega [RC] | alpha [1.1A])"
+echo -e "  ${C_CYAN}looping test${C_RESET}                   Run native test suite (78/78 tests)"
+echo -e "  ${C_CYAN}smiledev upgrade --alpha${C_RESET}       Switch channel (prod [1.1.2] | omega [RC] | alpha [1.1.2A])"
 echo ""

@@ -1,12 +1,13 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Looping Engine & smiledev CLI — Official Windows Installer (v1.1 / Arch 3.0A)
+    Looping Engine & smiledev CLI — Official Windows Installer (v1.1.2 / Arch 3.1A)
 .DESCRIPTION
     Installs Looping Engine CLI (looping.exe, ruuping.cmd) and smiledev package manager
     (smiledev.cmd, smiledev.ps1, smiledev Bash script) into %USERPROFILE%\.smiledev\bin
     and adds it cleanly to the User PATH. Builds from C++17 source if requested or if
-    no prebuilt binary is present.
+    no prebuilt binary is present, or fetches the official Windows x64 archive when run
+    standalone via repo.cokistudios.com/engine.
 #>
 [CmdletBinding()]
 param(
@@ -18,13 +19,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = $PSScriptRoot
+$RepoRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $BinSrc = Join-Path $RepoRoot "bin"
 $BinDest = Join-Path $Prefix "bin"
 
 Write-Host ""
 Write-Host "  ================================================================" -ForegroundColor Cyan
-Write-Host "   Looping Engine v1.1 (Arch 3.0A) & smiledev -- Windows Installer" -ForegroundColor Cyan
+Write-Host "   Looping Engine v1.1.2 (Arch 3.1A) & smiledev -- Windows Installer" -ForegroundColor Cyan
 Write-Host "  ================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -45,11 +46,26 @@ foreach ($d in $Dirs) {
 }
 
 $ExeSrc = Join-Path $BinSrc "looping.exe"
+$DownloadedTempDir = $null
 if ($FromSource -or (-not (Test-Path $ExeSrc))) {
     $BuildScript = Join-Path $RepoRoot "scripts\build-windows.ps1"
     if (Test-Path $BuildScript) {
         Write-Host "[build] Compiling Looping C++17 Engine from source..." -ForegroundColor Yellow
         & $BuildScript
+    } elseif (-not $FromSource) {
+        $ZipUrl = "https://repo.cokistudios.com/engine/looping-v1.1.2-windows-x64.zip"
+        $FallbackZipUrl = "https://cokistudios.github.io/engine/looping-v1.1.2-windows-x64.zip"
+        $DownloadedTempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("looping-win-install-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $DownloadedTempDir -Force | Out-Null
+        $ZipFile = Join-Path $DownloadedTempDir "looping-windows-x64.zip"
+        Write-Host "[download] Fetching Looping v1.1.2 (Arch 3.1A) for Windows x64 from repo.cokistudios.com/engine..." -ForegroundColor Yellow
+        try {
+            Invoke-WebRequest -Uri $ZipUrl -OutFile $ZipFile -UseBasicParsing
+        } catch {
+            Invoke-WebRequest -Uri $FallbackZipUrl -OutFile $ZipFile -UseBasicParsing
+        }
+        Expand-Archive -Path $ZipFile -DestinationPath $DownloadedTempDir -Force
+        $BinSrc = $DownloadedTempDir
     } else {
         Write-Warning "scripts\build-windows.ps1 not found and looping.exe missing."
     }
@@ -71,6 +87,9 @@ foreach ($f in $FilesToCopy) {
     } else {
         Write-Host "[skip] Optional file not present: $f" -ForegroundColor DarkGray
     }
+}
+if ($DownloadedTempDir -and (Test-Path $DownloadedTempDir)) {
+    Remove-Item -Path $DownloadedTempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Install default bundled modules if present

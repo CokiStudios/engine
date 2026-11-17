@@ -16,7 +16,7 @@ endif
 CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread
 
 SRC = main.cpp
-HEADERS = LoopingValue.hpp Looping3D.hpp LoopingAST.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingCSharpBridge.hpp LoopizeCore.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
+HEADERS = LoopingValue.hpp Looping3D.hpp LoopingAST.hpp LoopingDirectXWindow.hpp LoopingStage.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingCSharpBridge.hpp LoopizeCore.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
 
 ifneq ($(wildcard ../Makefile),)
     TARGET = ../bin/looping$(EXE_EXT)

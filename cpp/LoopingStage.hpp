@@ -1095,7 +1095,22 @@ private:
         for (auto& e : scene.entities) {
             if (e.type == "player") { player = &e; break; }
         }
-        if (!player) return;
+        if (!player) {
+            // Allow interactive camera orbit/pan even for 3D showcase scenes without a player entity
+            double yaw_spd = ((keys_mask & STAGE_INP_RIGHT) ? 1.0 : 0.0) - ((keys_mask & STAGE_INP_LEFT) ? 1.0 : 0.0);
+            double pitch_spd = ((keys_mask & STAGE_INP_UP) ? 1.0 : 0.0) - ((keys_mask & STAGE_INP_DOWN) ? 1.0 : 0.0);
+            if (std::abs(yaw_spd) > 0.01) cam3d_yaw_offset += yaw_spd * 1.4 * dt;
+            if (std::abs(pitch_spd) > 0.01) cam3d_pitch_offset = std::clamp(cam3d_pitch_offset + pitch_spd * 0.9 * dt, -0.35, 1.15);
+            if (std::abs(cam3d_yaw_offset) > 1e-4 || std::abs(cam3d_pitch_offset - 0.24) > 1e-4) {
+                double dist = 26.0;
+                scene.cam_pos = {
+                    scene.cam_target.x - std::sin(cam3d_yaw_offset) * dist,
+                    scene.cam_target.y + 4.5 + std::sin(cam3d_pitch_offset) * 14.0,
+                    scene.cam_target.z - std::cos(cam3d_yaw_offset) * dist
+                };
+            }
+            return;
+        }
 
         if (p3d_coyote > 0) p3d_coyote -= dt;
         if (p3d_jump_buf > 0) p3d_jump_buf -= dt;

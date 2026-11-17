@@ -89,6 +89,8 @@ public:
     }
 
     Parser(const std::string& src) : source(src), pos(0) {
+        replace_all(source, "\r\n", "\n");
+        replace_all(source, "\r", "\n");
         replace_all(source, "“", "\"");
         replace_all(source, "”", "\"");
         replace_all(source, "‘", "'");

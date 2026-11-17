@@ -183,14 +183,14 @@ public:
     std::unordered_set<std::string> imported_modules;
     std::unordered_set<std::string> imported_python_modules;
     std::string app_name = "HoloApp";
-    std::string base_version = "1.1";
-    std::string engine_version = "1.1";
-    std::string semver = "1.1.0";
-    std::string app_version = "1.1";
-    std::string arch_version = "3.0A";
+    std::string base_version = "1.1.2";
+    std::string engine_version = "1.1.2";
+    std::string semver = "1.1.2";
+    std::string app_version = "1.1.2";
+    std::string arch_version = "3.1A";
     std::string channel = "prod";
     std::string channel_name = "Looping";
-    std::string edition = "Production Release (Arch 3.0A Quantum Synthesis)";
+    std::string edition = "Production Release (Arch 3.1A Quantum Synthesis)";
     bool channel_initialized = false;
     bool invis_compile_enabled = true;
     std::string target_platform = "Shine Loop Console (Holo Looping OoS)";
@@ -542,6 +542,46 @@ public:
         variables["UI_FPS"] = Value(static_cast<int64_t>(active_ui_specs.target_fps));
     }
 
+    void sync_stage_to_window() {
+        current_window.stage_world_width = stage.world_width;
+        current_window.stage_world_height = stage.world_height;
+        current_window.stage_gravity = stage.gravity;
+        current_window.stage_scenario_name = stage.scenario_name;
+        current_window.stage_scenario_accent = stage.scenario_accent;
+        current_window.entities_2d.clear();
+        for (const auto& se : stage.entities_2d) {
+            DxEntity2DSpec de;
+            de.type = se.type;
+            de.name = se.name;
+            de.color = se.color;
+            de.label = se.label;
+            de.axis = se.axis;
+            de.x = se.x; de.y = se.y; de.w = se.w; de.h = se.h;
+            de.radius = se.radius;
+            de.speed = se.speed;
+            de.jump_force = se.jump_force;
+            de.power = se.power;
+            de.health = se.health;
+            de.max_health = se.max_health;
+            de.damage = se.damage;
+            de.points = se.points;
+            de.min_pos = se.min_pos;
+            de.max_pos = se.max_pos;
+            de.to_x = se.to_x;
+            de.to_y = se.to_y;
+            de.is_player = se.is_player;
+            de.spawn_x = se.spawn_x;
+            de.spawn_y = se.spawn_y;
+            current_window.entities_2d.push_back(std::move(de));
+        }
+        if (!current_scene3d.entities.empty() && current_scene3d.entities.size() > current_window.entities_3d.size()) {
+            current_window.entities_3d = current_scene3d.entities;
+            current_window.is_3d_mode = true;
+        } else if (current_scene3d.active) {
+            current_window.is_3d_mode = true;
+        }
+    }
+
     Value execute_snippet_code(const std::string& snippet_name, const std::string& code) {
         std::string trimmed = code;
         size_t p = trimmed.find_first_not_of(" \t\r\n");
@@ -676,23 +716,24 @@ public:
     void set_channel(const std::string& ch_raw) {
         std::string ch = ch_raw;
         for (char& c : ch) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (ch == "alpha" || ch == "alpha!" || ch == "1.1a" || ch == "alpha-1.1a" || ch == "experimental" || ch == "super-experimental") {
+        if (ch == "alpha" || ch == "alpha!" || ch == "1.1a" || ch == "alpha-1.1a" ||
+            ch == "1.1.2a" || ch == "alpha-1.1.2a" || ch == "experimental" || ch == "super-experimental") {
             channel = "alpha";
             channel_name = "Alpha! Looping";
             engine_version = base_version + "-alpha";
-            semver = "1.1.0-alpha";
+            semver = "1.1.2-alpha";
             edition = "Alpha! Looping — Super Experimental (Arch " + arch_version + ")";
         } else if (ch == "omega" || ch == "rc" || ch == "release-candidate") {
             channel = "omega";
             channel_name = "Omega Looping";
             engine_version = base_version + "-omega";
-            semver = "1.1.0-omega";
+            semver = "1.1.2-omega";
             edition = "Omega Looping — Release Candidate / RC (Arch " + arch_version + ")";
         } else {
             channel = "prod";
             channel_name = "Looping";
             engine_version = base_version;
-            semver = "1.1.0";
+            semver = "1.1.2";
             edition = "Production Release (Arch " + arch_version + " Quantum Synthesis)";
         }
         app_version = engine_version;
@@ -1633,17 +1674,89 @@ public:
                 return Value(true);
             }
             if (name == "window.export_native" || name == "window.save_native") {
+                sync_stage_to_window();
                 std::string path = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
                 if (path.empty()) path = "build/" + current_window.app_name + "_native.py";
-                bool ok = current_window.save_native_gui(path);
+                bool ok = false;
+                if (path.size() >= 6 && path.substr(path.size() - 6) == ".dxwin") {
+                    ok = current_window.save_dxwin(path);
+                } else if (path.size() >= 4 && path.substr(path.size() - 4) == ".cpp") {
+                    ok = current_window.save_directx_cpp(path);
+                } else {
+                    ok = current_window.save_native_gui(path);
+                }
                 last_exported_native_script = path;
                 has_active_window = true;
                 return Value(ok ? path : "");
             }
+            if (name == "window.export_directx" || name == "window.save_directx") {
+                sync_stage_to_window();
+                std::string path = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
+                if (path.empty()) path = "build/" + current_window.app_name + ".dxwin";
+                bool ok = (path.size() >= 4 && path.substr(path.size() - 4) == ".cpp")
+                    ? current_window.save_directx_cpp(path)
+                    : current_window.save_dxwin(path);
+                has_active_window = true;
+                return Value(ok ? path : "");
+            }
+            if (name == "window.import_obj" || name == "import_obj" || name == "obj3d.import") {
+                std::string path = evaluated_args.size() > 0 ? evaluated_args[0].as_string() : "";
+                std::string ename = evaluated_args.size() > 1 ? evaluated_args[1].as_string() : "";
+                std::string col = evaluated_args.size() > 2 ? evaluated_args[2].as_string() : "#38bdf8";
+                double sc = evaluated_args.size() > 3 ? evaluated_args[3].as_number() : 1.0;
+
+                loop_math::Mesh3D m = loop_math::load_obj_file(path);
+                bool from_file = !m.vertices.empty() && !m.faces.empty();
+                if (!from_file && !path.empty()) {
+                    loop_math::Mesh3D preset = loop_math::make_preset_obj_mesh(path);
+                    if (!preset.vertices.empty() && path.find(".obj") == std::string::npos) {
+                        m = std::move(preset);
+                    }
+                }
+                std::unordered_map<std::string, Value> res;
+                if (m.vertices.empty() || m.faces.empty()) {
+                    res["ok"] = Value(false);
+                    res["path"] = Value(path);
+                    return Value(res);
+                }
+                loop_math::normalize_mesh(m, 1.5);
+                if (ename.empty()) {
+                    size_t sl = path.find_last_of("/\\");
+                    ename = (sl == std::string::npos) ? path : path.substr(sl + 1);
+                }
+                loaded_obj_meshes[ename] = m;
+                if (!path.empty()) loaded_obj_meshes[path] = m;
+
+                loop_math::Entity3D e;
+                e.type = "obj";
+                e.name = ename;
+                e.mesh = "obj";
+                e.obj_file = path;
+                e.pos = {0.0, 2.0, 6.0 + static_cast<double>(current_scene3d.entities.size()) * 2.5};
+                e.scale = {sc, sc, sc};
+                e.color = col;
+                e.has_custom_mesh = true;
+                e.custom_mesh = m;
+
+                current_scene3d.active = true;
+                current_scene3d.entities.push_back(e);
+                current_window.add_entity_3d(e);
+                has_active_window = true;
+
+                res["ok"] = Value(true);
+                res["name"] = Value(ename);
+                res["path"] = Value(path);
+                res["vertices"] = Value(static_cast<int64_t>(m.vertices.size()));
+                res["faces"] = Value(static_cast<int64_t>(m.faces.size()));
+                res["triangles"] = Value(static_cast<int64_t>(m.triangle_count()));
+                return Value(res);
+            }
             if (name == "window.show_native" || name == "window.open_native" || name == "window.native") {
+                sync_stage_to_window();
                 has_active_window = true;
                 bool launch = evaluated_args.size() > 0 ? evaluated_args[0].is_truthy() : true;
-                bool ok = current_window.show_native(launch);
+                std::string backend = evaluated_args.size() > 1 ? evaluated_args[1].as_string() : "auto";
+                bool ok = current_window.show_native(launch, backend);
                 return Value(ok);
             }
             if (name == "window.export_html") {
@@ -1659,9 +1772,11 @@ public:
                 return Value(ok ? path : "");
             }
             if (name == "window.show" || name == "window.open") {
+                sync_stage_to_window();
                 has_active_window = true;
                 bool launch = evaluated_args.size() > 0 ? evaluated_args[0].is_truthy() : true;
-                bool ok = current_window.show(launch);
+                std::string mode = evaluated_args.size() > 1 ? evaluated_args[1].as_string() : "native";
+                bool ok = current_window.show(launch, mode);
                 return Value(ok);
             }
             if (name == "window.ascii" || name == "window.render_ascii") {
@@ -4123,15 +4238,19 @@ public:
                 return ret;
             }
 
-            // Fallback: If python module function, evaluate via Python Bridge
-            if (name.find('.') != std::string::npos && python_bridge.is_available) {
-                std::string py_call = name + "(";
-                for (size_t i = 0; i < evaluated_args.size(); ++i) {
-                    if (i > 0) py_call += ", ";
-                    py_call += evaluated_args[i].to_json();
+            // Fallback: If an imported Python module function was invoked, evaluate via Python Bridge
+            auto mod_dot = name.find('.');
+            if (mod_dot != std::string::npos && !imported_python_modules.empty()) {
+                std::string mod_prefix = name.substr(0, mod_dot);
+                if (imported_python_modules.count(mod_prefix) > 0 && python_bridge.check_available()) {
+                    std::string py_call = name + "(";
+                    for (size_t i = 0; i < evaluated_args.size(); ++i) {
+                        if (i > 0) py_call += ", ";
+                        py_call += evaluated_args[i].to_json();
+                    }
+                    py_call += ")";
+                    return python_bridge.eval_expr(py_call, variables);
                 }
-                py_call += ")";
-                return python_bridge.eval_expr(py_call, variables);
             }
 
             return Value();
@@ -4780,7 +4899,7 @@ public:
                     if (!py_comp.empty()) {
                         std::string py_path = base_dir + "/" + py_comp;
                         std::ifstream pf(py_path);
-                        if (pf.good() && python_bridge.is_available) {
+                        if (pf.good() && python_bridge.check_available()) {
                             std::string py_content((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
                             python_bridge.execute_block(py_content, variables);
                             std::cout << "  " << color::GREEN << "✔" << color::RESET << " Python Component linked: " << py_comp << "\n";
@@ -4870,7 +4989,7 @@ public:
                 imported_modules.insert(mod);
                 if (resolved_path.size() >= 3 && resolved_path.substr(resolved_path.size() - 3) == ".py") {
                     imported_python_modules.insert(mod);
-                    if (python_bridge.is_available) {
+                    if (python_bridge.check_available()) {
                         std::ifstream pf(resolved_path);
                         std::string py_content((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
                         python_bridge.execute_block(py_content, variables);
@@ -5441,16 +5560,27 @@ public:
         std::cout << color::CYAN << "[EXEC]" << color::RESET << " Loading source: " 
                   << color::BOLD << path << color::RESET << "\n";
 
-        if (python_bridge.is_available) {
-            std::cout << color::GREEN << "[PYTHON INTEROP]" << color::RESET << " Attached Python runtime: " 
-                  << color::CYAN << python_bridge.get_command_str() << color::RESET << "\n";
-        } else {
-            std::cout << color::YELLOW << "[PYTHON INTEROP]" << color::RESET << " Standalone Mode (Python not detected in PATH)\n";
-        }
-
         std::stringstream buffer;
         buffer << file.rdbuf();
         std::string content = buffer.str();
+
+        bool uses_python = (content.find("python") != std::string::npos ||
+                            content.find("py!") != std::string::npos ||
+                            content.find("py:") != std::string::npos ||
+                            content.find("pysnippet") != std::string::npos ||
+                            content.find("runpy") != std::string::npos ||
+                            content.find("pyloop") != std::string::npos);
+
+        if (uses_python) {
+            if (python_bridge.check_available()) {
+                std::cout << color::GREEN << "[PYTHON INTEROP]" << color::RESET << " Attached Python runtime: "
+                          << color::CYAN << python_bridge.get_command_str() << color::RESET << "\n";
+            } else {
+                std::cout << color::YELLOW << "[PYTHON INTEROP]" << color::RESET << " Standalone C++ Mode (Python not found in PATH; native fast-path active)\n";
+            }
+        } else {
+            std::cout << color::CYAN << "[RUNTIME]" << color::RESET << " Native C++17 Standalone Engine (Zero-Python Execution)\n";
+        }
 
         if (invis_compile_enabled) {
             std::string cache_bin = InvisBinaryCompiler::ensure_invis_cache(path, content, active_ui_specs);

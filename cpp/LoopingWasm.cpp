@@ -2,6 +2,8 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#elif defined(_WIN32) && defined(LOOPING_BUILD_DLL)
+#define EMSCRIPTEN_KEEPALIVE __declspec(dllexport)
 #else
 #define EMSCRIPTEN_KEEPALIVE
 #endif
@@ -66,6 +68,7 @@ struct WasmVMContext {
     Interpreter vm;
     std::string last_source;
     std::vector<uint8_t> rgba_fb;
+    std::vector<uint8_t> bgra_fb;
     std::string out_buf;
 };
 
@@ -226,6 +229,13 @@ const char* lp_eval_expr(int32_t h, const char* expr_str) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+void lp_set_channel(int32_t h, const char* channel) {
+    if (auto* ctx = get_ctx(h)) {
+        ctx->vm.set_channel(channel ? channel : "prod");
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE
 void lp_set_input(int32_t h, uint32_t keys_mask, double yaw_delta, double pitch_delta) {
     auto* ctx = get_ctx(h);
     if (!ctx) return;
@@ -241,6 +251,10 @@ const char* lp_step(int32_t h, double dt, double view_w, double view_h) {
         global_out_buf() = "{}";
         return global_out_buf().c_str();
     }
+    if (!ctx->vm.csharp_bridge.instances.empty()) {
+        ctx->vm.csharp_bridge.step_all(dt, ctx->vm.variables, &ctx->vm.current_scene3d);
+    }
+    ctx->vm.loopize_runtime.step(dt);
     ctx->vm.stage.step(dt, &ctx->vm.current_scene3d);
     ctx->out_buf = ctx->vm.stage.build_snapshot_json(ctx->vm.current_scene3d, view_w, view_h, true);
     return ctx->out_buf.c_str();
@@ -264,6 +278,25 @@ const uint8_t* lp_render_3d_rgba(int32_t h, int w, int h_px) {
     auto overlay = ctx->vm.stage.build_3d_overlay_entities();
     ctx->vm.current_scene3d.render_rgba(ctx->rgba_fb, w, h_px, &overlay);
     return ctx->rgba_fb.data();
+}
+
+EMSCRIPTEN_KEEPALIVE
+const uint8_t* lp_render_3d_bgra(int32_t h, int w, int h_px) {
+    auto* ctx = get_ctx(h);
+    if (!ctx) return nullptr;
+    int cw = std::clamp(w, 16, 1920);
+    int ch = std::clamp(h_px, 16, 1080);
+    auto overlay = ctx->vm.stage.build_3d_overlay_entities();
+    std::vector<loop_math::RGBColor> fb;
+    ctx->vm.current_scene3d.render_framebuffer(fb, cw, ch, &overlay);
+    ctx->bgra_fb.resize(fb.size() * 4);
+    for (size_t i = 0; i < fb.size(); ++i) {
+        ctx->bgra_fb[i * 4 + 0] = fb[i].b;
+        ctx->bgra_fb[i * 4 + 1] = fb[i].g;
+        ctx->bgra_fb[i * 4 + 2] = fb[i].r;
+        ctx->bgra_fb[i * 4 + 3] = 255;
+    }
+    return ctx->bgra_fb.data();
 }
 
 EMSCRIPTEN_KEEPALIVE
