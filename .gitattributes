@@ -5,3 +5,4 @@ bin/smiledev text eol=lf
 *.bat text eol=crlf
 *.wasm binary
 *.exe binary
+*.zip filter=lfs diff=lfs merge=lfs -text
