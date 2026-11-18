@@ -1,5 +1,6 @@
 #include "LoopingInterpreter.hpp"
 #include "LoopingREPL.hpp"
+#include "LoopingMacWindow.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -11,10 +12,11 @@ void print_usage(const char* prog_name) {
     std::cout << "  " << prog_name << " <script.loop>            Execute Looping script\n";
     std::cout << "  " << prog_name << " -i, --persistent <file>  Execute and keep persistent terminal alive (like py -i)\n";
     std::cout << "  " << prog_name << " --metal4 <script.loop>   Execute with Apple Metal 4 graphics acceleration\n";
-    std::cout << "  " << prog_name << " --gui <script.loop>      Execute Looping script in native GUI window (DirectX 11 on Win32)\n";
-    std::cout << "  " << prog_name << " --native <script.loop>   Execute Looping script in pure OS native window (DirectX 11 on Win32)\n";
+    std::cout << "  " << prog_name << " --gui <script.loop>      Execute Looping script in native GUI window (DX11 Win32 / Cocoa+ASM macOS)\n";
+    std::cout << "  " << prog_name << " --native <script.loop>   Execute Looping script in pure OS native window (Zero Python)\n";
     std::cout << "  " << prog_name << " --py-gui <script.loop>   Execute Looping script with Python LoopNativeWindow (pygame/compat)\n";
-    std::cout << "  " << prog_name << " --dx-window <file.dxwin> Launch dynamically generated DirectX 11 + Direct2D window\n";
+    std::cout << "  " << prog_name << " --dx-window <file.dxwin> Launch native window from .dxwin spec (DX11 Win32 / Cocoa macOS)\n";
+    std::cout << "  " << prog_name << " --mac-window <file.dxwin> Launch native macOS Cocoa + Objective-C + Assembly window\n";
     std::cout << "  " << prog_name << " window <name> [flags]    Create, synthesize & launch dynamic graphical window\n";
     std::cout << "  " << prog_name << " run <script.loop>        Execute Looping script\n";
     std::cout << "  " << prog_name << " create <name> [--type]   Create new app/game with reactive snippets (Arch 3.1A)\n";
@@ -32,7 +34,7 @@ void print_usage(const char* prog_name) {
     std::cout << "  " << prog_name << " auth <login|whoami|logout> CS ID Connect Developer authentication\n";
     std::cout << "  " << prog_name << " repl                     Launch interactive REPL shell\n";
     std::cout << "  " << prog_name << " eval \"<code>\"            Evaluate inline code string\n";
-    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (78 tests)\n";
+    std::cout << "  " << prog_name << " test                     Run built-in engine test suite (80 tests)\n";
     std::cout << "  " << prog_name << " --channel <alpha|omega|prod> Select tier (Alpha! Looping | Omega Looping RC | Prod)\n";
     std::cout << "  " << prog_name << " --version, -v            Display engine version & channel nomenclature\n";
     std::cout << "  " << prog_name << " --help, -h               Show this help message\n\n";
@@ -1328,6 +1330,64 @@ int run_tests() {
 #endif
     }
 
+    // Test 79: macOS Native AppKit + Objective-C + Assembly Window & ASM Core
+    {
+#if defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+        uint32_t test_fb[64];
+        lp_asm_clear_bgra32(test_fb, 64, 0xFF112233u);
+        lp_asm_fill_rect_bgra32(test_fb, 8, 8, 2, 2, 3, 3, 0xFF00F5D4u);
+        uint64_t asm_hash = lp_asm_fnv1a64(reinterpret_cast<const uint8_t*>(test_fb), sizeof(test_fb));
+        float asm_lerp = lp_asm_lerp_f32(10.0f, 30.0f, 0.25f);
+
+        DynamicWindow w_mac("MacNativeSmoke", 820, 520, "metal4");
+        DxEntity2DSpec mac_hero;
+        mac_hero.type = "player";
+        mac_hero.name = "Hero";
+        mac_hero.is_player = true;
+        mac_hero.x = 120.0; mac_hero.y = 200.0; mac_hero.w = 34.0; mac_hero.h = 42.0;
+        mac_hero.color = "#00f5d4";
+        w_mac.add_card("macOS Native", "Zero-Python AppKit + Objective-C + Assembly", 20, 20, 300, 120)
+             .add_button("RUN", "noop", 20, 160, 120, 34)
+             .add_entity_2d(mac_hero);
+        bool saved_mac = w_mac.save_dxwin("build/test_mac_native.dxwin");
+        DirectXWindowSpec mac_spec;
+        bool loaded_mac = load_dxwin_file("build/test_mac_native.dxwin", mac_spec);
+        int mac_rc = loaded_mac ? mac_native::run_mac_native_window(mac_spec, 3, false) : 1;
+        assert_test("macOS Native Cocoa + Assembly Window (3-frame smoke)",
+                    test_fb[0] == 0xFF112233u && test_fb[2 * 8 + 2] == 0xFF00F5D4u &&
+                    asm_hash != 0 && std::abs(asm_lerp - 15.0f) < 0.01f &&
+                    saved_mac && loaded_mac && mac_rc == 0);
+#else
+        assert_test("macOS Native Cocoa + Assembly Window (cross-platform guard)", true);
+#endif
+    }
+
+    // Test 80: Zero-Python Multiline Block & Extended py!(...) Native Fast-Path
+    {
+        Interpreter vm_py_full;
+        vm_py_full.execute_code(
+            "py! {\n"
+            "import math\n"
+            "total = 0\n"
+            "for i in range(1, 6):\n"
+            "    if i % 2 == 0:\n"
+            "        total += i * 10\n"
+            "    else:\n"
+            "        total += i\n"
+            "msg = f'sum={total}'\n"
+            "}\n"
+            "val py_ext = py!('coki'.upper() + ':' + ('ok' if 10 in [5, 10, 15] else 'no'))\n"
+            "val py_slice = py!('looping'[0:4])\n"
+        );
+        bool zero_python_spawned = !vm_py_full.python_bridge.has_probed;
+        assert_test("Zero-Python py! { ... } Block & Extended Native Fast-Path",
+                    zero_python_spawned &&
+                    vm_py_full.variables["total"].as_int() == 69 &&
+                    vm_py_full.variables["msg"].as_string() == "sum=69" &&
+                    vm_py_full.variables["py_ext"].as_string() == "COKI:ok" &&
+                    vm_py_full.variables["py_slice"].as_string() == "loop");
+    }
+
     std::cout << "\n" << color::BOLD << (passed == total ? color::GREEN : color::YELLOW)
               << "Results: " << passed << "/" << total << " tests passed." << color::RESET << "\n\n";
 
@@ -1404,6 +1464,38 @@ int main(int argc, char* argv[]) {
         int rc = app.run(smoke_frames, show_win);
         if (smoke_mode) {
             std::cout << (rc == 0 ? color::GREEN : color::RED) << "[DX SMOKE] " << color::RESET
+                      << "Spec=" << dx_path << " Frames=" << smoke_frames
+                      << " RC=" << rc << "\n";
+        }
+        return rc;
+    }
+#elif defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    if (argc >= 3 && (std::string(argv[1]) == "--mac-window" || std::string(argv[1]) == "--mac-smoke" ||
+                      std::string(argv[1]) == "--dx-window" || std::string(argv[1]) == "--dx-smoke")) {
+        std::string flag = argv[1];
+        bool smoke_mode = (flag == "--mac-smoke" || flag == "--dx-smoke");
+        std::string dx_path = argv[2];
+        int smoke_frames = smoke_mode ? 3 : 0;
+        bool show_win = !smoke_mode;
+        for (int i = 3; i < argc; ++i) {
+            std::string a = argv[i];
+            if (a == "--frames" && i + 1 < argc) {
+                try { smoke_frames = std::max(1, std::stoi(argv[++i])); } catch (...) {}
+            } else if (a == "--show") {
+                show_win = true;
+            } else if (a == "--headless") {
+                show_win = false;
+            }
+        }
+        DirectXWindowSpec spec;
+        if (!load_dxwin_file(dx_path, spec)) {
+            std::cerr << color::RED << "[MACOS WINDOW ERROR]" << color::RESET
+                      << " Failed to load window spec: " << dx_path << "\n";
+            return 1;
+        }
+        int rc = mac_native::run_mac_native_window(spec, smoke_frames, show_win);
+        if (smoke_mode) {
+            std::cout << (rc == 0 ? color::GREEN : color::RED) << "[MAC SMOKE] " << color::RESET
                       << "Spec=" << dx_path << " Frames=" << smoke_frames
                       << " RC=" << rc << "\n";
         }
@@ -2408,6 +2500,9 @@ int main(int argc, char* argv[]) {
 #if defined(_WIN32) && !defined(__EMSCRIPTEN__)
                   << (py_gui_mode ? " Initializing Python LoopNativeWindow subsystem (pygame / _PygameCompat)...\n"
                                   : " Initializing Dynamic DirectX 11 + Direct2D Native Window subsystem (Zero Python)...\n");
+#elif defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+                  << (py_gui_mode ? " Initializing Python LoopNativeWindow subsystem (pygame / _PygameCompat)...\n"
+                                  : " Initializing Native macOS AppKit + Objective-C + Assembly Window subsystem (Zero Python)...\n");
 #else
                   << (native_mode ? " Initializing Pure Native OS Window subsystem (No HTML5)...\n" 
                                   : " Initializing Loop OS Native Graphical Window subsystem...\n");
@@ -2445,6 +2540,19 @@ int main(int argc, char* argv[]) {
                         std::cout << color::CYAN << "[DIRECTX WINDOW]" << color::RESET
                                   << " Launched dynamic DirectX 11 window: " << color::BOLD << dx_path << color::RESET
                                   << " (PID: " << dx_pid << ")\n";
+                    }
+                }
+            }
+#elif defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+            if (!py_gui_mode && !force_node && (has_window_content || native_mode)) {
+                std::string dx_path = "build/" + win_app + ".dxwin";
+                if (vm.current_window.save_dxwin(dx_path)) {
+                    pid_t mac_pid = launch_mac_window_process(dx_path);
+                    if (mac_pid > 0) {
+                        vm.window_process_pid = mac_pid;
+                        std::cout << color::CYAN << "[MACOS NATIVE WINDOW]" << color::RESET
+                                  << " Launched native Cocoa + Objective-C + Assembly window: " << color::BOLD << dx_path << color::RESET
+                                  << " (PID: " << mac_pid << ")\n";
                     }
                 }
             }

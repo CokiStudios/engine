@@ -56,7 +56,7 @@ public:
             return available;
         }
         detected = true;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
         available = false;
         toolchain_name = "builtin-cs-vm";
 #elif !defined(_WIN32)

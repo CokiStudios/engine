@@ -1,6 +1,8 @@
 #!/usr/bin/env pwsh
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+} catch {}
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SmileBash = Join-Path $ScriptDir "smiledev"
@@ -113,6 +115,7 @@ switch ($cmd) {
     "init" {
         $projName = if ($restArgs.Count -gt 0) { $restArgs[0] } else { "looping-app" }
         New-Item -ItemType Directory -Force -Path $projName | Out-Null
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         $mainLoop = Join-Path $projName "main.loop"
         if (-not (Test-Path $mainLoop)) {
             $loopContent = @(
@@ -120,7 +123,7 @@ switch ($cmd) {
                 "define app `"$projName`" version 1.1.2:",
                 "    say(`"Hello from $projName on Looping Arch 3.1A!`")"
             ) -join "`n"
-            Set-Content -Path $mainLoop -Encoding UTF8 -Value $loopContent
+            [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $projName).Path "main.loop"), $loopContent, $utf8NoBom)
         }
         $jsonContent = @(
             "{",
@@ -131,8 +134,30 @@ switch ($cmd) {
             "  `"arch`": `"3.1A`"",
             "}"
         ) -join "`n"
-        Set-Content -Path (Join-Path $projName "smile.json") -Encoding UTF8 -Value $jsonContent
+        $jsonContent = $jsonContent -replace '"3.1A",', '"3.1A"'
+        [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $projName).Path "smile.json"), $jsonContent, $utf8NoBom)
         Write-Output "[ok] Initialized Looping project in ./$projName"
+        exit 0
+    }
+    { $_ -in @("upgrade", "update") } {
+        try {
+            $tlsFlags = [Net.SecurityProtocolType]::Tls12
+            try { $tlsFlags = $tlsFlags -bor 12288 } catch {}
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $tlsFlags
+        } catch {}
+        $env:LOOPING_CHANNEL = $Channel
+        $installerScript = $null
+        foreach ($u in @("https://engine.cokistudios.com/install.ps1", "https://repo.cokistudios.com/engine/install.ps1", "https://cokistudios.github.io/engine/install.ps1")) {
+            try {
+                $installerScript = Invoke-RestMethod -Uri $u -UseBasicParsing
+                if ($installerScript) { break }
+            } catch {}
+        }
+        if (-not $installerScript) {
+            Write-Error "Unable to fetch Windows installer from engine.cokistudios.com."
+            exit 1
+        }
+        Invoke-Expression $installerScript
         exit 0
     }
     "clean" {

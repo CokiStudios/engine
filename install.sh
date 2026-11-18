@@ -3,7 +3,7 @@
 # ♾️ COKI STUDIOS — LOOPING ENGINE & SMILEDEV NATIVE INSTALLER
 # Universal macOS (arm64 + x86_64) • v1.1.2 (Arch 3.1A)
 # Channels: Looping (Prod) • Omega Looping (RC) • Alpha! Looping (Super Exp)
-# Hosted on: https://repo.cokistudios.com/engine
+# Hosted on: https://engine.cokistudios.com (mirror: https://repo.cokistudios.com/engine)
 # ═══════════════════════════════════════════════════════════════
 set -e
 
@@ -58,7 +58,8 @@ case "$CHANNEL_LC" in
 esac
 
 ARCH_VER="3.1A"
-PRIMARY_URL="https://repo.cokistudios.com/engine/${TAR_NAME}"
+PRIMARY_URL="https://engine.cokistudios.com/${TAR_NAME}"
+FALLBACK_URL0="https://repo.cokistudios.com/engine/${TAR_NAME}"
 FALLBACK_URL1="https://cokistudios.github.io/engine/${TAR_NAME}"
 FALLBACK_URL2="https://github.com/CokiStudios/engine/releases/download/v1.1/${TAR_NAME}"
 
@@ -92,12 +93,15 @@ fi
 TMP_DIR="$(mktemp -d /tmp/looping-install-XXXXXX)"
 TMP_TAR="$TMP_DIR/engine.tar.gz"
 
-echo -e "📦 Downloading ${BRAND_NAME} v$VERSION from repo.cokistudios.com/engine..."
+echo -e "📦 Downloading ${BRAND_NAME} v$VERSION from engine.cokistudios.com..."
 if ! curl -fsSL --connect-timeout 8 "$PRIMARY_URL" -o "$TMP_TAR" 2>/dev/null; then
-    echo -e "${C_DIM}Trying fallback mirror 1...${C_RESET}"
-    if ! curl -fsSL --connect-timeout 8 "$FALLBACK_URL1" -o "$TMP_TAR" 2>/dev/null; then
-        echo -e "${C_DIM}Trying fallback mirror 2 (GitHub CokiStudios/engine)...${C_RESET}"
-        curl -fsSL --connect-timeout 10 "$FALLBACK_URL2" -o "$TMP_TAR"
+    echo -e "${C_DIM}Trying mirror (repo.cokistudios.com/engine)...${C_RESET}"
+    if ! curl -fsSL --connect-timeout 8 "$FALLBACK_URL0" -o "$TMP_TAR" 2>/dev/null; then
+        echo -e "${C_DIM}Trying fallback mirror 1...${C_RESET}"
+        if ! curl -fsSL --connect-timeout 8 "$FALLBACK_URL1" -o "$TMP_TAR" 2>/dev/null; then
+            echo -e "${C_DIM}Trying fallback mirror 2 (GitHub CokiStudios/engine)...${C_RESET}"
+            curl -fsSL --connect-timeout 10 "$FALLBACK_URL2" -o "$TMP_TAR"
+        fi
     fi
 fi
 

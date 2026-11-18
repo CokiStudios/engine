@@ -8,15 +8,21 @@ else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Darwin)
         ARCH_FLAGS ?= -arch arm64 -arch x86_64
+        MAC_SRCS = LoopingMacWindow.mm LoopingAsmCore.S
+        MAC_OBJS = LoopingMacWindow.o LoopingAsmCore.o
+        MAC_LDFLAGS = -framework Cocoa -framework CoreGraphics -framework Foundation
     else
         ARCH_FLAGS ?=
+        MAC_SRCS =
+        MAC_OBJS =
+        MAC_LDFLAGS =
     endif
 endif
 
 CXXFLAGS ?= -std=c++17 -O3 -Wall -Wextra -pthread
 
 SRC = main.cpp
-HEADERS = LoopingValue.hpp Looping3D.hpp LoopingAST.hpp LoopingDirectXWindow.hpp LoopingStage.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingCSharpBridge.hpp LoopizeCore.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
+HEADERS = LoopingValue.hpp Looping3D.hpp LoopingAST.hpp LoopingDirectXWindow.hpp LoopingMacWindow.hpp LoopingStage.hpp LoopingCompiler.hpp LoopingPythonBridge.hpp LoopingCSharpBridge.hpp LoopizeCore.hpp LoopingParser.hpp LoopingInterpreter.hpp LoopingREPL.hpp
 
 ifneq ($(wildcard ../Makefile),)
     TARGET = ../bin/looping$(EXE_EXT)
@@ -30,12 +36,21 @@ BINDIR ?= $(PREFIX)/bin
 
 all: $(LOCAL_TARGET) $(TARGET)
 
-$(LOCAL_TARGET): $(SRC) $(HEADERS)
-	$(CXX) $(CXXFLAGS) $(ARCH_FLAGS) -I. $(SRC) -o $(LOCAL_TARGET)
+LoopingMacWindow.o: LoopingMacWindow.mm LoopingMacWindow.hpp LoopingDirectXWindow.hpp
+	$(CXX) $(CXXFLAGS) -fobjc-arc $(ARCH_FLAGS) -I. -c LoopingMacWindow.mm -o LoopingMacWindow.o
+
+LoopingAsmCore.o: LoopingAsmCore.S
+	$(CXX) $(ARCH_FLAGS) -c LoopingAsmCore.S -o LoopingAsmCore.o
+
+$(LOCAL_TARGET): $(SRC) $(HEADERS) $(MAC_OBJS)
+	@rm -f $(LOCAL_TARGET)
+	$(CXX) $(CXXFLAGS) $(ARCH_FLAGS) -I. $(SRC) $(MAC_OBJS) $(MAC_LDFLAGS) -o $(LOCAL_TARGET)
+	@if command -v codesign >/dev/null 2>&1; then codesign -s - --force $(LOCAL_TARGET) >/dev/null 2>&1 || true; fi
 	@echo "Built: $(LOCAL_TARGET)"
 
 $(TARGET): $(LOCAL_TARGET)
-	@-mkdir -p $(dir $(TARGET)) 2>/dev/null && cp $(LOCAL_TARGET) $(TARGET) 2>/dev/null || true
+	@-mkdir -p $(dir $(TARGET)) 2>/dev/null && rm -f $(TARGET) && cp $(LOCAL_TARGET) $(TARGET) 2>/dev/null || true
+	@if command -v codesign >/dev/null 2>&1; then codesign -s - --force $(TARGET) >/dev/null 2>&1 || true; fi
 	@echo "Copied to: $(TARGET)"
 
 install: $(LOCAL_TARGET)
@@ -48,7 +63,7 @@ uninstall:
 	@echo "Uninstalled looping from $(DESTDIR)$(BINDIR)/looping"
 
 clean:
-	@rm -f $(LOCAL_TARGET)
+	@rm -f $(LOCAL_TARGET) LoopingMacWindow.o LoopingAsmCore.o
 	@-rm -f $(TARGET) 2>/dev/null || true
 
 .PHONY: all clean install uninstall

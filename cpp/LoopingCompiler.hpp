@@ -5,6 +5,7 @@
 #include "LoopingAST.hpp"
 #include "LoopingParser.hpp"
 #include "LoopingDirectXWindow.hpp"
+#include "LoopingMacWindow.hpp"
 #include <string>
 #include <vector>
 #include <memory>
@@ -767,8 +768,46 @@ inline std::string resolve_looping_host_exe() {
         return std::string(exe_buf);
     }
     return "looping.exe";
+#elif defined(__APPLE__) && !defined(__EMSCRIPTEN__)
+    char exe_buf[4096];
+    uint32_t sz = sizeof(exe_buf);
+    if (_NSGetExecutablePath(exe_buf, &sz) == 0) {
+        return std::string(exe_buf);
+    }
+    return "looping";
+#elif defined(__linux__) && !defined(__EMSCRIPTEN__)
+    char exe_buf[4096];
+    ssize_t len = readlink("/proc/self/exe", exe_buf, sizeof(exe_buf) - 1);
+    if (len > 0) {
+        exe_buf[len] = '\0';
+        return std::string(exe_buf);
+    }
+    return "looping";
 #else
     return "looping";
+#endif
+}
+
+// Helper: cleanly spawn native Cocoa + Objective-C + Assembly dynamic window on macOS (Zero Python)
+inline pid_t launch_mac_window_process(const std::string& dxwin_path) {
+#if defined(__APPLE__) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE) && !defined(__EMSCRIPTEN__) && !defined(LOOPING_NO_SUBPROCESS)
+    std::string host_exe = resolve_looping_host_exe();
+    pid_t pid = fork();
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        execl(host_exe.c_str(), host_exe.c_str(), "--mac-window", dxwin_path.c_str(), (char*)NULL);
+        execlp("looping", "looping", "--mac-window", dxwin_path.c_str(), (char*)NULL);
+        _exit(127);
+    }
+    return pid;
+#else
+    (void)dxwin_path;
+    return 0;
 #endif
 }
 
@@ -797,7 +836,7 @@ inline pid_t launch_directx_window_process(const std::string& dxwin_path) {
 
 // Helper: cleanly spawn native Python/Pygame window without blocking or cluttering the persistent shell
 inline pid_t launch_native_window_process(const std::string& script_path, const std::string& extra_args = "") {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
     (void)script_path;
     (void)extra_args;
     return 0;
@@ -3359,6 +3398,20 @@ if __name__ == '__main__':
             }
             return true;
         }
+#elif defined(__APPLE__) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE) && !defined(__EMSCRIPTEN__) && !defined(LOOPING_NO_SUBPROCESS)
+        std::string b_low = backend;
+        for (char& c : b_low) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (b_low == "auto" || b_low == "cocoa" || b_low == "appkit" || b_low == "metal4" || b_low == "native") {
+            std::string dx_path = "build/" + app_name + ".dxwin";
+            save_dxwin(dx_path);
+            std::cout << color::GREEN << "✔ [NATIVE MACOS WINDOW]" << color::RESET << " Native AppKit + Objective-C + Assembly desktop window synthesized successfully:\n";
+            std::cout << "  • Native Window Spec: " << color::CYAN << dx_path << color::RESET << " (AppKit + CoreGraphics + ASM, Zero-Python)\n";
+            if (launch_interactive) {
+                pid_t pid = launch_mac_window_process(dx_path);
+                std::cout << color::CYAN << "[LAUNCH MACOS GUI]" << color::RESET << " Launching native macOS AppKit window (PID: " << pid << ")...\n";
+            }
+            return true;
+        }
 #else
         (void)backend;
 #endif
@@ -3404,6 +3457,21 @@ if __name__ == '__main__':
             }
             return true;
         }
+#elif defined(__APPLE__) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE) && !defined(__EMSCRIPTEN__) && !defined(LOOPING_NO_SUBPROCESS)
+        bool use_mac = (m_low != "html" && m_low != "web" && m_low != "python" && m_low != "py" && m_low != "pygame" && m_low != "compat" && m_low != "tk");
+        if (use_mac) {
+            std::string dx_path = "build/" + app_name + ".dxwin";
+            save_dxwin(dx_path);
+            std::cout << color::GREEN << "✔ [DYNAMIC WINDOW]" << color::RESET << " Window synthesized successfully:\n";
+            std::cout << "  • Source Script: " << color::CYAN << loop_path << color::RESET << "\n";
+            std::cout << "  • Native macOS AppKit+ASM: " << color::CYAN << dx_path << color::RESET << " (Cocoa AppKit + CoreGraphics + ASM, Zero-Python)\n";
+            std::cout << "  • Interactive HTML5: " << color::CYAN << html_path << color::RESET << "\n";
+            if (launch_interactive) {
+                pid_t pid = launch_mac_window_process(dx_path);
+                std::cout << color::CYAN << "[LAUNCH MACOS GUI]" << color::RESET << " Opening native macOS window (PID: " << pid << ")...\n";
+            }
+            return true;
+        }
 #endif
 
         std::string py_path = "build/" + app_name + "_native.py";
@@ -3416,7 +3484,9 @@ if __name__ == '__main__':
 
         if (launch_interactive) {
             if (m_low == "html" || m_low == "web") {
-#ifdef __APPLE__
+#if defined(LOOPING_NO_SUBPROCESS) || defined(__EMSCRIPTEN__)
+                (void)html_path;
+#elif defined(__APPLE__)
                 std::cout << color::CYAN << "[LAUNCH GUI]" << color::RESET << " Opening dynamic window in web viewer...\n";
                 std::string open_cmd = "open \"" + html_path + "\"";
                 system(open_cmd.c_str());
@@ -4228,7 +4298,7 @@ public:
                                     out.write(reinterpret_cast<const char*>(exe_bytes.data()), static_cast<std::streamsize>(exe_bytes.size()));
                                     out.close();
                                     make_executable(out_file);
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(LOOPING_NO_SUBPROCESS)
                                     std::string sign_cmd = "codesign --force --sign - \"" + out_file + "\" >/dev/null 2>&1";
                                     system(sign_cmd.c_str());
 #endif
@@ -4328,6 +4398,7 @@ public:
             swift_out.close();
 
             if (!wants_swift_file) {
+#if !defined(LOOPING_NO_SUBPROCESS) && !defined(__EMSCRIPTEN__)
                 // Compile directly into native Mach-O executable using Apple swiftc
                 std::string swiftc_cmd = "swiftc -parse-as-library \"" + swift_file + "\" -o \"" + out_file + "\" 2>/dev/null";
                 int ret = system(swiftc_cmd.c_str());
@@ -4336,6 +4407,7 @@ public:
                     std::cout << "\033[32m✔ [COMPILER SUCCESS]\033[0m Native SwiftUI binary compiled to: " << out_file << " [Apple Ecosystem / SwiftUI Metal 120Hz]\n";
                     return true;
                 }
+#endif
             }
 
             if (out_created_path) *out_created_path = swift_file;
@@ -4385,7 +4457,7 @@ public:
             cs_out.close();
 
             if (!wants_cs_file) {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
                 // External C# compilation skipped inside WASM sandbox; export .cs source
 #elif defined(_WIN32)
                 std::string mcs_cmd = "(where.exe csc >NUL 2>&1 && csc /nologo /out:\"" + out_file + "\" \"" + cs_file + "\" >NUL 2>&1)";
@@ -4505,7 +4577,7 @@ public:
 
             // 6. Zip into .c2 (Remove pre-existing file so zip creates a clean new archive)
             std::filesystem::remove(abs_c2_file, ec);
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
             // In WASM, leave virtual directory cleaned up or artifact written
 #elif defined(_WIN32)
             {
@@ -4901,6 +4973,9 @@ public:
     // Runs an executable artifact or script (supports Standalone Native Binary, LPBN Compact Binary, and .loop scripts)
     static bool run_artifact(const std::string& path) {
 #ifdef __EMSCRIPTEN__
+        (void)path;
+        return false;
+#elif defined(LOOPING_NO_SUBPROCESS)
         (void)path;
         return false;
 #else

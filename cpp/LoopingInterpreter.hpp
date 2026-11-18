@@ -313,7 +313,7 @@ public:
     }
 
     static std::string resolve_zbash_shell() {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
         return "wasm-sandbox";
 #elif !defined(_WIN32)
         static const char* candidates[] = {"/bin/zsh", "/usr/bin/zsh", "/bin/bash", "/bin/sh"};
@@ -376,7 +376,7 @@ public:
 
     ZBashResult run_zbash_command(const std::string& cmd, bool stream_to_stdout) {
         ZBashResult res;
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
         std::string trimmed = cmd;
         while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) trimmed.erase(0, 1);
         if (trimmed.rfind("echo ", 0) == 0) {
@@ -783,7 +783,7 @@ public:
             if (n == "math.tau" || n == "TAU" || n == "tau") return Value(6.28318530717958647692);
             if (n == "math.phi" || n == "PHI" || n == "phi") return Value(1.61803398874989484820);
             if (n == "sys.platform") {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
                 return Value("wasm");
 #elif defined(__APPLE__)
                 return Value("darwin");
@@ -796,7 +796,7 @@ public:
 #endif
             }
             if (n == "sys.arch") {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
                 return Value("wasm32");
 #elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
                 return Value("arm64");
@@ -2686,7 +2686,7 @@ public:
                 return Value("");
             }
             if (name == "sys.platform") {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
                 return Value("wasm");
 #elif defined(__APPLE__)
                 return Value("darwin");
@@ -2699,7 +2699,7 @@ public:
 #endif
             }
             if (name == "sys.arch") {
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) || defined(LOOPING_NO_SUBPROCESS)
                 return Value("wasm32");
 #elif defined(__arm64__) || defined(__aarch64__) || defined(_M_ARM64)
                 return Value("arm64");
@@ -5572,12 +5572,8 @@ public:
                             content.find("pyloop") != std::string::npos);
 
         if (uses_python) {
-            if (python_bridge.check_available()) {
-                std::cout << color::GREEN << "[PYTHON INTEROP]" << color::RESET << " Attached Python runtime: "
-                          << color::CYAN << python_bridge.get_command_str() << color::RESET << "\n";
-            } else {
-                std::cout << color::YELLOW << "[PYTHON INTEROP]" << color::RESET << " Standalone C++ Mode (Python not found in PATH; native fast-path active)\n";
-            }
+            std::cout << color::CYAN << "[PYTHON FAST-PATH]" << color::RESET
+                      << " Native C++17 Zero-Python evaluator active (lazy CPython fallback only if needed)\n";
         } else {
             std::cout << color::CYAN << "[RUNTIME]" << color::RESET << " Native C++17 Standalone Engine (Zero-Python Execution)\n";
         }

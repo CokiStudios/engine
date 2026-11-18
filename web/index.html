@@ -452,7 +452,7 @@
             <a href="https://cokistudios.com">Inicio</a>
             <a href="/hiop-ide">hiOP Web IDE</a>
             <a href="/developer">Docs</a>
-            <a href="/engine/latest.json" target="_blank">latest.json</a>
+            <a href="./latest.json" target="_blank">latest.json</a>
         </div>
     </header>
 
@@ -473,8 +473,8 @@
             </div>
 
             <div id="cmd-win" class="cmd-display">
-                <span class="cmd-text">irm https://repo.cokistudios.com/engine/install.ps1 | iex</span>
-                <button class="btn-copy" onclick="copySnippet('irm https://repo.cokistudios.com/engine/install.ps1 | iex', this)">Copiar</button>
+                <span class="cmd-text">irm https://engine.cokistudios.com/install.ps1 | iex</span>
+                <button class="btn-copy" onclick="copySnippet('irm https://engine.cokistudios.com/install.ps1 | iex', this)">Copiar</button>
             </div>
 
             <div id="cmd-brew" class="cmd-display" style="display: none;">
@@ -483,8 +483,8 @@
             </div>
 
             <div id="cmd-curl" class="cmd-display" style="display: none;">
-                <span class="cmd-text">curl -fsSL https://repo.cokistudios.com/engine/install.sh | bash</span>
-                <button class="btn-copy" onclick="copySnippet('curl -fsSL https://repo.cokistudios.com/engine/install.sh | bash', this)">Copiar</button>
+                <span class="cmd-text">curl -fsSL https://engine.cokistudios.com/install.sh | bash</span>
+                <button class="btn-copy" onclick="copySnippet('curl -fsSL https://engine.cokistudios.com/install.sh | bash', this)">Copiar</button>
             </div>
 
             <div id="cmd-smile" class="cmd-display" style="display: none;">
@@ -541,8 +541,9 @@
                     <p class="card-sub">Soporte nativo Windows con <code>bin/looping.exe</code>, <code>install.ps1</code>, <code>smiledev.cmd</code>/<code>.ps1</code> y puente <code>win32</code> integrado.</p>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <a href="../install.ps1" class="btn-download" style="flex:1; min-width:120px;">install.ps1</a>
-                    <a href="../bin/looping.exe" class="btn-download" style="flex:1; min-width:120px;">looping.exe</a>
+                    <a href="./install.ps1" class="btn-download" style="flex:1; min-width:120px;">install.ps1</a>
+                    <a href="./looping-v1.1.2-windows-x64.zip" class="btn-download" style="flex:1; min-width:120px;">Windows .zip</a>
+                    <a href="./looping.exe" class="btn-download" style="flex:1; min-width:120px;">looping.exe</a>
                 </div>
             </div>
 
@@ -572,8 +573,8 @@
                     <p class="card-sub">Contiene los binarios universales de <code>looping</code> v1.1 y el gestor <code>smiledev</code> (v1.1 &amp; Alpha! 1.1A) para Apple Silicon &amp; Intel.</p>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <a href="/engine/looping-v1.1-darwin-universal.tar.gz" class="btn-download" style="flex:1; min-width:140px;">Descargar .tar.gz (v1.1)</a>
-                    <a href="/engine/looping-v1.1A-darwin-universal.tar.gz" class="btn-download" style="flex:1; min-width:140px; border-color:rgba(244,63,94,0.45);">Alpha! 1.1A (.tar.gz)</a>
+                    <a href="./looping-v1.1-darwin-universal.tar.gz" class="btn-download" style="flex:1; min-width:140px;">Descargar .tar.gz (v1.1)</a>
+                    <a href="./looping-v1.1A-darwin-universal.tar.gz" class="btn-download" style="flex:1; min-width:140px; border-color:rgba(244,63,94,0.45);">Alpha! 1.1A (.tar.gz)</a>
                 </div>
             </div>
 
@@ -588,7 +589,7 @@
                     </div>
                     <p class="card-sub">Imagen de disco montable con instalador interactivo de Terminal y desinstalador integrado.</p>
                 </div>
-                <a href="/engine/Looping-Engine-v2.6.0-macOS.dmg" class="btn-download">Descargar .dmg</a>
+                <a href="./Looping-Engine-v2.6.0-macOS.dmg" class="btn-download">Descargar .dmg</a>
             </div>
 
             <div class="card">
@@ -602,7 +603,7 @@
                     </div>
                     <p class="card-sub">Instalador gráfico estándar de macOS que configura automáticamente <code>/usr/local/bin</code> en el PATH del sistema.</p>
                 </div>
-                <a href="/engine/Instalar-Looping.pkg" class="btn-download">Descargar .pkg</a>
+                <a href="./Instalar-Looping.pkg" class="btn-download">Descargar .pkg</a>
             </div>
         </div>
 
@@ -735,7 +736,7 @@
                     <tr>
                         <td><strong>looping-v1.1.2-windows-x64.zip (Arch 3.1A • DX11 + CLI)</strong></td>
                         <td>SHA-256</td>
-                        <td><code>8a2a952a4d1f51d7a07950f745a590b6dcd5870a8d9886c1cb3930baa8c8fd15</code></td>
+                        <td><code>bcad860e466586264c541b4e82cf1b6441d9de04156f5e764b7e877036b8186d</code></td>
                     </tr>
                     <tr>
                         <td><strong>bin/looping.exe v1.1.2 (Windows x64 DirectX 11)</strong></td>
@@ -755,12 +756,12 @@
                     <tr>
                         <td><strong>bin/looping (Universal Mach-O)</strong></td>
                         <td>SHA-256</td>
-                        <td><code>c9655eb37a84ff22c7570c3ca218fdfe7eac3fd8c4b0f812dda46a162fbfed72</code></td>
+                        <td><code>40b6f467e85ec5c8061fd2ddce7bc5194bc44b57e1e9cb381ff7325282f409cf</code></td>
                     </tr>
                     <tr>
                         <td><strong>bin/smiledev v1.1.2 / Alpha! 1.1.2A (CLI)</strong></td>
                         <td>SHA-256</td>
-                        <td><code>1a16a9a30a0d7f93ea72020f113904d60930d58b9ab356b384bcd213aaafff72</code></td>
+                        <td><code>fe5a23ef68290be09ae2eb30431131a59cc4a863da7cc7d16634b5463d9f88a7</code></td>
                     </tr>
                     <tr>
                         <td><strong>Instalar Looping.pkg</strong></td>
@@ -778,7 +779,7 @@
     </main>
 
     <footer>
-        <p>Coki Studios &amp; Holo Entertainment © 2026 • Registro Oficial: <a href="https://repo.cokistudios.com/engine">repo.cokistudios.com/engine</a></p>
+        <p>Coki Studios &amp; Holo Entertainment © 2026 • Registro Oficial: <a href="https://engine.cokistudios.com">engine.cokistudios.com</a> (Mirror: <a href="https://repo.cokistudios.com/engine/">repo.cokistudios.com/engine</a>)</p>
     </footer>
 
     <script>

@@ -16,3 +16,4 @@ build/
 
 # Smiledev runtime cache
 .smiledev/
+experimental/asm-objc-c/looping-exp

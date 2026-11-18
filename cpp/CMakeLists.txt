@@ -12,7 +12,15 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(looping main.cpp)
+if(APPLE)
+    enable_language(ASM)
+    enable_language(OBJCXX)
+    add_executable(looping main.cpp LoopingMacWindow.mm LoopingAsmCore.S)
+    set_source_files_properties(LoopingMacWindow.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_link_libraries(looping PRIVATE "-framework Cocoa" "-framework CoreGraphics" "-framework Foundation")
+else()
+    add_executable(looping main.cpp)
+endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../Makefile")
     set(LOOPING_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../bin")
