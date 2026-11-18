@@ -271,7 +271,7 @@ static int serve_http(int port, const char* default_script, int max_requests) {
 
 int main(int argc, char** argv) {
     if (argc >= 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0)) {
-        printf("Alpha! Looping Experimental Micro-Runtime v1.1.2A (Assembly + objc_msgSend + C11 | Zero-Dependency)\n");
+        printf("Alpha! Looping Experimental Micro-Runtime v1.1.3A (Assembly + objc_msgSend + C11 | Zero-Dependency)\n");
         return 0;
     }
 
