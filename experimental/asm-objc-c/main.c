@@ -270,6 +270,11 @@ static int serve_http(int port, const char* default_script, int max_requests) {
 }
 
 int main(int argc, char** argv) {
+    if (argc >= 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0)) {
+        printf("Alpha! Looping Experimental Micro-Runtime v1.1.2A (Assembly + objc_msgSend + C11 | Zero-Dependency)\n");
+        return 0;
+    }
+
     if (argc >= 2 && strcmp(argv[1], "--test") == 0) {
         const char* probe = "CokiStudios";
         size_t len = exp_asm_strlen(probe);
@@ -324,6 +329,7 @@ int main(int argc, char** argv) {
 
     printf("Looping Experimental Micro-Runtime (Assembly + Objective-C ABI + C11)\n");
     printf("Usage:\n");
+    printf("  %s --version, -v\n", argv[0]);
     printf("  %s --test\n", argv[0]);
     printf("  %s --serve <port> [--script file.loop] [--once]\n", argv[0]);
     printf("  %s --window <file.loop>\n", argv[0]);
