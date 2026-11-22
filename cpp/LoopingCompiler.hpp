@@ -1004,6 +1004,14 @@ public:
     std::vector<DxStagePresetSpec> stage_presets;
     DxAlgebraTableSpec algebra_table;
     std::vector<std::pair<std::string, std::string>> init_vars;
+    bool custom_ui_mode = false;
+    std::vector<DxDrawOp> draw_ops;
+
+    DynamicWindow& add_draw_op(const DxDrawOp& op) {
+        custom_ui_mode = true;
+        draw_ops.push_back(op);
+        return *this;
+    }
 
     DynamicWindow& add_entity_3d(const loop_math::Entity3D& e) {
         is_3d_mode = true;
@@ -3308,6 +3316,8 @@ if __name__ == '__main__':
         dx.stage_presets = stage_presets;
         dx.algebra_table = algebra_table;
         dx.init_vars = init_vars;
+        dx.custom_ui_mode = custom_ui_mode || !draw_ops.empty();
+        dx.draw_ops = draw_ops;
 
         for (const auto& c : cards) {
             dx.cards.push_back({c.title, c.text, c.badge, c.icon, c.x, c.y, c.width, c.height, c.raw_title, c.raw_text});

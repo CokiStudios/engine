@@ -42,11 +42,42 @@ inline uint32_t parse_hex_bgra(const std::string& hex, uint8_t alpha = 255) {
 }
 
 inline NSColor* nscolor_from_hex(const std::string& hex, CGFloat alpha = 1.0) {
-    uint32_t bgra = parse_hex_bgra(hex, 255);
+    std::string s = hex;
+    if (!s.empty() && s[0] == '#') s.erase(0, 1);
+    CGFloat finalAlpha = alpha;
+    if (s.size() == 8) {
+        unsigned int a8 = 255;
+        std::sscanf(s.substr(6, 2).c_str(), "%x", &a8);
+        finalAlpha = (a8 / 255.0) * alpha;
+        s = s.substr(0, 6);
+    }
+    uint32_t bgra = parse_hex_bgra(s, 255);
     CGFloat r = ((bgra >> 16) & 0xFF) / 255.0;
     CGFloat g = ((bgra >> 8) & 0xFF) / 255.0;
     CGFloat b = (bgra & 0xFF) / 255.0;
-    return [NSColor colorWithCalibratedRed:r green:g blue:b alpha:alpha];
+    return [NSColor colorWithCalibratedRed:r green:g blue:b alpha:finalAlpha];
+}
+
+inline std::string unescape_display_text(const std::string& raw) {
+    std::string out;
+    out.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '\\' && i + 1 < raw.size()) {
+            char next = raw[i + 1];
+            if (next == 'n') { out.push_back('\n'); ++i; continue; }
+            if (next == 't') { out += "  "; ++i; continue; }
+        }
+        out.push_back(raw[i]);
+    }
+    return out;
+}
+
+inline bool hex_is_light(const std::string& hex) {
+    uint32_t bgra = parse_hex_bgra(hex, 255);
+    double r = ((bgra >> 16) & 0xFF) / 255.0;
+    double g = ((bgra >> 8) & 0xFF) / 255.0;
+    double b = (bgra & 0xFF) / 255.0;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 0.58;
 }
 
 inline uint32_t shade_bgra(uint32_t bgra, double lit) {
@@ -1315,13 +1346,327 @@ void play_pcm_tone_macos(double freq_hz, double duration_ms) {
 
 @end
 
+// ── DrawNative Freeform Custom Native UI View (Zero Forced Template Chrome) ──
+@interface LoopingDrawNativeView : NSView
+@property (nonatomic, assign) const looping::DirectXWindowSpec* spec;
+@property (nonatomic, assign) NSPoint mousePos;
+@property (nonatomic, strong) NSString* toastText;
+@property (nonatomic, strong) NSTimer* toastTimer;
+@end
+
+@implementation LoopingDrawNativeView
+
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstResponder { return YES; }
+
+- (void)updateTrackingAreas {
+    [super updateTrackingAreas];
+    for (NSTrackingArea* a in self.trackingAreas) [self removeTrackingArea:a];
+    NSTrackingAreaOptions opts = NSTrackingMouseMoved | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect;
+    [self addTrackingArea:[[NSTrackingArea alloc] initWithRect:self.bounds options:opts owner:self userInfo:nil]];
+}
+
+- (void)mouseMoved:(NSEvent*)event {
+    self.mousePos = [self convertPoint:[event locationInWindow] fromView:nil];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)mouseDown:(NSEvent*)event {
+    if (!_spec) return;
+    NSPoint pt = [self convertPoint:[event locationInWindow] fromView:nil];
+    CGFloat sx = self.bounds.size.width / std::max(1.0, _spec->width);
+    CGFloat sy = self.bounds.size.height / std::max(1.0, _spec->height);
+    CGFloat lx = pt.x / std::max<CGFloat>(0.1, sx);
+    CGFloat ly = pt.y / std::max<CGFloat>(0.1, sy);
+
+    for (auto it = _spec->draw_ops.rbegin(); it != _spec->draw_ops.rend(); ++it) {
+        const auto& op = *it;
+        if (op.op == "button" || op.op == "chip") {
+            double bw = op.op == "chip" ? std::max(72.0, op.text.size() * 8.5 + 28.0) : op.w;
+            double bh = op.op == "chip" ? 30.0 : op.h;
+            if (lx >= op.x && lx <= op.x + bw && ly >= op.y && ly <= op.y + bh) {
+                looping::mac_native::play_pcm_tone_macos(660.0, 55.0);
+                std::string act = op.action.empty() ? op.text : op.action;
+                self.toastText = [NSString stringWithFormat:@"[DrawNative] %@",
+                                  [NSString stringWithUTF8String:act.c_str()] ?: @"Action"];
+                [self.toastTimer invalidate];
+                __weak LoopingDrawNativeView* weakSelf = self;
+                self.toastTimer = [NSTimer scheduledTimerWithTimeInterval:3.2 repeats:NO block:^(NSTimer* _Nonnull t) {
+                    (void)t;
+                    weakSelf.toastText = nil;
+                    [weakSelf setNeedsDisplay:YES];
+                }];
+                [self setNeedsDisplay:YES];
+                return;
+            }
+        }
+    }
+}
+
+- (void)keyDown:(NSEvent*)event {
+    if ([event keyCode] == 53) { // Esc
+        [NSApp terminate:nil];
+    }
+}
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [super drawRect:dirtyRect];
+    if (!_spec) return;
+    using namespace looping::mac_native;
+
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGFloat baseW = std::max(320.0, _spec->width);
+    CGFloat baseH = std::max(240.0, _spec->height);
+    CGFloat sx = self.bounds.size.width / baseW;
+    CGFloat sy = self.bounds.size.height / baseH;
+
+    // Background fill
+    [nscolor_from_hex(_spec->bg_color, 1.0) setFill];
+    NSRectFill(self.bounds);
+
+    CGContextSaveGState(ctx);
+    CGContextScaleCTM(ctx, sx, sy);
+
+    NSPoint logicalMouse = NSMakePoint(self.mousePos.x / std::max<CGFloat>(0.1, sx),
+                                       self.mousePos.y / std::max<CGFloat>(0.1, sy));
+
+    auto makeFont = [](double sz, const std::string& weight) -> NSFont* {
+        CGFloat fsz = std::max(8.0, sz);
+        if (weight == "mono") return [NSFont monospacedSystemFontOfSize:fsz weight:NSFontWeightMedium];
+        if (weight == "bold") return [NSFont systemFontOfSize:fsz weight:NSFontWeightBold];
+        if (weight == "semibold") return [NSFont systemFontOfSize:fsz weight:NSFontWeightSemibold];
+        return [NSFont systemFontOfSize:fsz weight:NSFontWeightRegular];
+    };
+
+    for (const auto& op : _spec->draw_ops) {
+        if (op.op == "gradient") {
+            CGFloat gw = op.w > 0 ? op.w : baseW;
+            CGFloat gh = op.h > 0 ? op.h : baseH;
+            NSColor* c1 = nscolor_from_hex(op.color1, 1.0);
+            NSColor* c2 = nscolor_from_hex(op.color2, 1.0);
+            NSGradient* grad = [[NSGradient alloc] initWithStartingColor:c1 endingColor:c2];
+            [grad drawInRect:NSMakeRect(op.x, op.y, gw, gh) angle:(op.flag ? 90.0 : 0.0)];
+        } else if (op.op == "glow") {
+            NSColor* c1 = nscolor_from_hex(op.color1, std::max(0.02, std::min(0.8, op.alpha)));
+            NSColor* c2 = nscolor_from_hex(op.color1, 0.0);
+            NSGradient* rad = [[NSGradient alloc] initWithStartingColor:c1 endingColor:c2];
+            NSRect r = NSMakeRect(op.x - op.radius, op.y - op.radius, op.radius * 2.0, op.radius * 2.0);
+            [rad drawInBezierPath:[NSBezierPath bezierPathWithOvalInRect:r] relativeCenterPosition:NSZeroPoint];
+        } else if (op.op == "rect" || op.op == "glass") {
+            CGFloat a = (op.op == "glass") ? std::max(0.03, std::min(0.95, op.alpha)) : 1.0;
+            NSBezierPath* path = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(op.x, op.y, op.w, op.h)
+                                                                 xRadius:op.radius yRadius:op.radius];
+            [nscolor_from_hex(op.color1, a) setFill];
+            [path fill];
+            if (!op.border_color.empty()) {
+                [nscolor_from_hex(op.border_color, 1.0) setStroke];
+                [path setLineWidth:std::max(1.0, op.value)];
+                [path stroke];
+            }
+        } else if (op.op == "circle") {
+            NSBezierPath* oval = [NSBezierPath bezierPathWithOvalInRect:
+                NSMakeRect(op.x - op.radius, op.y - op.radius, op.radius * 2.0, op.radius * 2.0)];
+            [nscolor_from_hex(op.color1, 1.0) setFill];
+            [oval fill];
+            if (!op.border_color.empty()) {
+                [nscolor_from_hex(op.border_color, 1.0) setStroke];
+                [oval setLineWidth:1.5];
+                [oval stroke];
+            }
+        } else if (op.op == "line") {
+            NSBezierPath* ln = [NSBezierPath bezierPath];
+            [ln moveToPoint:NSMakePoint(op.x, op.y)];
+            [ln lineToPoint:NSMakePoint(op.w, op.h)];
+            [nscolor_from_hex(op.color1, 1.0) setStroke];
+            [ln setLineWidth:std::max(1.0, op.value)];
+            [ln stroke];
+        } else if (op.op == "divider") {
+            [nscolor_from_hex(op.color1, 1.0) setFill];
+            NSRectFill(NSMakeRect(op.x, op.y, op.w > 0 ? op.w : baseW, 1.0));
+        } else if (op.op == "navbar") {
+            CGFloat nh = op.h > 0 ? op.h : 56.0;
+            [nscolor_from_hex(op.color1, 0.96) setFill];
+            NSRectFill(NSMakeRect(0, 0, baseW, nh));
+            [nscolor_from_hex(op.color2, 0.35) setFill];
+            NSRectFill(NSMakeRect(0, nh - 1.0, baseW, 1.0));
+            BOOL lightBg = hex_is_light(op.color1);
+            NSColor* titleCol = lightBg ? [NSColor colorWithCalibratedWhite:0.08 alpha:1.0] : [NSColor whiteColor];
+            NSColor* subCol = lightBg ? [NSColor colorWithCalibratedWhite:0.35 alpha:1.0] : [NSColor colorWithCalibratedWhite:0.68 alpha:1.0];
+            NSString* nt = [NSString stringWithUTF8String:op.text.c_str()] ?: @"";
+            [nt drawAtPoint:NSMakePoint(20, (nh - 20) * 0.5)
+             withAttributes:@{NSFontAttributeName: makeFont(16, "bold"), NSForegroundColorAttributeName: titleCol}];
+            if (!op.subtext.empty()) {
+                NSString* st = [NSString stringWithUTF8String:op.subtext.c_str()] ?: @"";
+                NSDictionary* sa = @{NSFontAttributeName: makeFont(12, "semibold"), NSForegroundColorAttributeName: subCol};
+                NSSize sz = [st sizeWithAttributes:sa];
+                [st drawAtPoint:NSMakePoint(baseW - sz.width - 20, (nh - sz.height) * 0.5) withAttributes:sa];
+            }
+        } else if (op.op == "sidebar") {
+            CGFloat sw = op.w > 0 ? op.w : 220.0;
+            [nscolor_from_hex(op.color1, 0.96) setFill];
+            NSRectFill(NSMakeRect(0, op.y, sw, baseH - op.y));
+            if (!op.border_color.empty()) {
+                [nscolor_from_hex(op.border_color, 1.0) setFill];
+                NSRectFill(NSMakeRect(sw - 1.0, op.y, 1.0, baseH - op.y));
+            }
+        } else if (op.op == "card") {
+            NSRect cr = NSMakeRect(op.x, op.y, op.w, op.h);
+            NSBezierPath* cp = [NSBezierPath bezierPathWithRoundedRect:cr xRadius:op.radius yRadius:op.radius];
+            [nscolor_from_hex(op.color1, 0.95) setFill];
+            [cp fill];
+            if (!op.border_color.empty()) {
+                [nscolor_from_hex(op.border_color, 1.0) setStroke];
+                [cp setLineWidth:1.0];
+                [cp stroke];
+            }
+            // Top accent bar
+            NSBezierPath* bar = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(op.x + 14, op.y + 12, 34, 4) xRadius:2 yRadius:2];
+            [nscolor_from_hex(op.color2, 1.0) setFill];
+            [bar fill];
+            BOOL lightCard = hex_is_light(op.color1);
+            NSColor* tCol = lightCard ? [NSColor colorWithCalibratedWhite:0.08 alpha:1.0] : [NSColor whiteColor];
+            NSColor* bCol = lightCard ? [NSColor colorWithCalibratedWhite:0.32 alpha:1.0] : [NSColor colorWithCalibratedWhite:0.74 alpha:1.0];
+            NSString* ct = [NSString stringWithUTF8String:unescape_display_text(op.text).c_str()] ?: @"";
+            [ct drawInRect:NSMakeRect(op.x + 14, op.y + 24, op.w - 28, 24)
+            withAttributes:@{NSFontAttributeName: makeFont(14, "bold"), NSForegroundColorAttributeName: tCol}];
+            if (!op.subtext.empty()) {
+                NSString* cb = [NSString stringWithUTF8String:unescape_display_text(op.subtext).c_str()] ?: @"";
+                [cb drawInRect:NSMakeRect(op.x + 14, op.y + 48, op.w - 28, std::max(20.0, op.h - 58))
+                withAttributes:@{NSFontAttributeName: makeFont(12, "regular"), NSForegroundColorAttributeName: bCol}];
+            }
+        } else if (op.op == "text") {
+            NSString* txt = [NSString stringWithUTF8String:unescape_display_text(op.text).c_str()] ?: @"";
+            NSDictionary* attrs = @{
+                NSFontAttributeName: makeFont(op.value > 0 ? op.value : 15.0, op.extra),
+                NSForegroundColorAttributeName: nscolor_from_hex(op.color1, 1.0)
+            };
+            if (op.w > 0) {
+                [txt drawInRect:NSMakeRect(op.x, op.y, op.w, baseH - op.y) withAttributes:attrs];
+            } else {
+                [txt drawAtPoint:NSMakePoint(op.x, op.y) withAttributes:attrs];
+            }
+        } else if (op.op == "button") {
+            NSRect br = NSMakeRect(op.x, op.y, op.w, op.h);
+            BOOL hov = NSPointInRect(logicalMouse, br);
+            NSBezierPath* bp = [NSBezierPath bezierPathWithRoundedRect:br xRadius:op.radius yRadius:op.radius];
+            [nscolor_from_hex(op.color1, hov ? 0.86 : 1.0) setFill];
+            [bp fill];
+            if (hov) {
+                [[NSColor colorWithWhite:1.0 alpha:0.35] setStroke];
+                [bp setLineWidth:1.5];
+                [bp stroke];
+            }
+            NSString* bl = [NSString stringWithUTF8String:op.text.c_str()] ?: @"";
+            NSDictionary* ba = @{NSFontAttributeName: makeFont(13, "bold"),
+                                 NSForegroundColorAttributeName: nscolor_from_hex(op.color2, 1.0)};
+            NSSize bsz = [bl sizeWithAttributes:ba];
+            [bl drawAtPoint:NSMakePoint(op.x + (op.w - bsz.width) * 0.5, op.y + (op.h - bsz.height) * 0.5) withAttributes:ba];
+        } else if (op.op == "badge" || op.op == "chip") {
+            NSString* bl = [NSString stringWithUTF8String:op.text.c_str()] ?: @"";
+            BOOL isChip = (op.op == "chip");
+            NSColor* fillC = isChip ? (op.flag ? nscolor_from_hex(op.color1, 1.0) : [NSColor colorWithWhite:0.5 alpha:0.16])
+                                    : nscolor_from_hex(op.color1, 1.0);
+            NSColor* txtC = isChip ? (op.flag ? [NSColor colorWithCalibratedRed:0.02 green:0.07 blue:0.1 alpha:1.0]
+                                              : nscolor_from_hex(op.color1, 1.0))
+                                   : nscolor_from_hex(op.color2, 1.0);
+            NSDictionary* ba = @{NSFontAttributeName: makeFont(11, "bold"), NSForegroundColorAttributeName: txtC};
+            NSSize bsz = [bl sizeWithAttributes:ba];
+            CGFloat pw = bsz.width + 24.0;
+            CGFloat ph = isChip ? 30.0 : 24.0;
+            NSRect pr = NSMakeRect(op.x, op.y, pw, ph);
+            NSBezierPath* pp = [NSBezierPath bezierPathWithRoundedRect:pr xRadius:ph * 0.5 yRadius:ph * 0.5];
+            [fillC setFill];
+            [pp fill];
+            [bl drawAtPoint:NSMakePoint(op.x + 12.0, op.y + (ph - bsz.height) * 0.5) withAttributes:ba];
+        } else if (op.op == "progress") {
+            NSBezierPath* track = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(op.x, op.y, op.w, op.h) xRadius:op.radius yRadius:op.radius];
+            [nscolor_from_hex(op.color2, 1.0) setFill];
+            [track fill];
+            double ratio = std::max(0.0, std::min(1.0, op.value > 1.0 ? op.value / 100.0 : op.value));
+            if (ratio > 0.005) {
+                NSBezierPath* fill = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(op.x, op.y, op.w * ratio, op.h) xRadius:op.radius yRadius:op.radius];
+                [nscolor_from_hex(op.color1, 1.0) setFill];
+                [fill fill];
+            }
+        } else if (op.op == "avatar") {
+            NSRect ar = NSMakeRect(op.x - op.radius, op.y - op.radius, op.radius * 2.0, op.radius * 2.0);
+            NSBezierPath* ap = [NSBezierPath bezierPathWithOvalInRect:ar];
+            [nscolor_from_hex(op.color1, 1.0) setFill];
+            [ap fill];
+            NSString* ini = [NSString stringWithUTF8String:op.text.c_str()] ?: @"CS";
+            NSDictionary* aa = @{NSFontAttributeName: makeFont(std::max(11.0, op.radius * 0.72), "bold"),
+                                 NSForegroundColorAttributeName: nscolor_from_hex(op.color2, 1.0)};
+            NSSize sz = [ini sizeWithAttributes:aa];
+            [ini drawAtPoint:NSMakePoint(op.x - sz.width * 0.5, op.y - sz.height * 0.5) withAttributes:aa];
+        } else if (op.op == "chart_bars") {
+            NSBezierPath* bg = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(op.x, op.y, op.w, op.h) xRadius:op.radius yRadius:op.radius];
+            [nscolor_from_hex(op.color2, 0.9) setFill];
+            [bg fill];
+            std::vector<double> vals;
+            std::istringstream ss(op.subtext);
+            std::string tok;
+            double maxv = 1.0;
+            while (std::getline(ss, tok, ',')) {
+                try {
+                    double v = std::stod(tok);
+                    vals.push_back(v);
+                    if (v > maxv) maxv = v;
+                } catch (...) {}
+            }
+            if (!vals.empty()) {
+                double pad = 14.0;
+                double gap = 8.0;
+                double usableW = std::max(20.0, op.w - pad * 2.0 - gap * (vals.size() - 1));
+                double bw = usableW / vals.size();
+                double maxBarH = std::max(12.0, op.h - pad * 2.0);
+                for (size_t i = 0; i < vals.size(); ++i) {
+                    double bh = std::max(4.0, (vals[i] / maxv) * maxBarH);
+                    double bx = op.x + pad + i * (bw + gap);
+                    double by = op.y + op.h - pad - bh;
+                    NSBezierPath* bar = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(bx, by, bw, bh) xRadius:4 yRadius:4];
+                    [nscolor_from_hex(op.color1, 0.72 + 0.28 * (vals[i] / maxv)) setFill];
+                    [bar fill];
+                }
+            }
+        }
+    }
+
+    // Floating Toast if an interactive DrawNative button/chip was clicked
+    if (self.toastText) {
+        NSDictionary* ta = @{NSFontAttributeName: makeFont(12, "semibold"), NSForegroundColorAttributeName: [NSColor whiteColor]};
+        NSSize tsz = [self.toastText sizeWithAttributes:ta];
+        CGFloat tw = tsz.width + 28.0;
+        NSRect tr = NSMakeRect(baseW - tw - 18.0, baseH - 48.0, tw, 32.0);
+        NSBezierPath* tp = [NSBezierPath bezierPathWithRoundedRect:tr xRadius:10 yRadius:10];
+        [[NSColor colorWithCalibratedRed:0.05 green:0.08 blue:0.15 alpha:0.92] setFill];
+        [tp fill];
+        [nscolor_from_hex(_spec->accent_color, 1.0) setStroke];
+        [tp setLineWidth:1.0];
+        [tp stroke];
+        [self.toastText drawAtPoint:NSMakePoint(tr.origin.x + 14.0, tr.origin.y + (tr.size.height - tsz.height) * 0.5) withAttributes:ta];
+    }
+
+    CGContextRestoreGState(ctx);
+}
+
+@end
+
 namespace looping {
 namespace mac_native {
 
 int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool show_window) {
+    const bool has_drawnative = spec.custom_ui_mode || !spec.draw_ops.empty();
+    const bool has_game_stage = !has_drawnative && (
+        spec.is_3d_mode ||
+        !spec.entities_2d.empty() ||
+        !spec.entities_3d.empty() ||
+        !spec.stage_presets.empty() ||
+        spec.algebra_table.enabled
+    );
+
     StageSimState sim;
-    int canvas_w = std::max(320, static_cast<int>(spec.width) - 340);
-    int canvas_h = std::max(240, static_cast<int>(spec.height) - 140);
+    int canvas_w = std::max(320, static_cast<int>(spec.width) - (has_game_stage ? 340 : 0));
+    int canvas_h = std::max(240, static_cast<int>(spec.height) - (has_game_stage ? 140 : 0));
     sim.init(spec, canvas_w, canvas_h);
 
     if (!show_window) {
@@ -1336,8 +1681,8 @@ int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool sh
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-        CGFloat winW = std::max(720.0, spec.width);
-        CGFloat winH = std::max(480.0, spec.height);
+        CGFloat winW = std::max(has_drawnative ? 420.0 : 720.0, spec.width);
+        CGFloat winH = std::max(has_drawnative ? 300.0 : 480.0, spec.height);
         NSRect frame = NSMakeRect(0, 0, winW, winH);
         NSWindowStyleMask style = NSWindowStyleMaskTitled |
                                   NSWindowStyleMaskClosable |
@@ -1350,11 +1695,8 @@ int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool sh
                                                         defer:NO];
         NSString* titleStr = [NSString stringWithUTF8String:spec.title.c_str()] ?: @"Looping Native Window";
         [win setTitle:titleStr];
+        [win setAcceptsMouseMovedEvents:YES];
         [win center];
-
-        NSView* root = [win contentView];
-        [root setWantsLayer:YES];
-        root.layer.backgroundColor = nscolor_from_hex(spec.bg_color, 1.0).CGColor;
 
         LoopingMacWindowController* ctrl = [[LoopingMacWindowController alloc] init];
         ctrl.window = win;
@@ -1366,6 +1708,27 @@ int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool sh
         ctrl.sliderViews = [NSMutableArray array];
         ctrl.toggleViews = [NSMutableArray array];
         [win setDelegate:ctrl];
+
+        // ── MODE A: DrawNative 100% Freeform Custom Native UI (Zero Template Chrome) ──
+        if (has_drawnative) {
+            LoopingDrawNativeView* dnView = [[LoopingDrawNativeView alloc] initWithFrame:frame];
+            dnView.spec = &sim.spec;
+            dnView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+            [win setContentView:dnView];
+            [win makeFirstResponder:dnView];
+            for (const auto& tn : spec.tones) play_pcm_tone_macos(tn.freq_hz, tn.duration_ms);
+            [win makeKeyAndOrderFront:nil];
+            [NSApp activateIgnoringOtherApps:YES];
+            static LoopingMacWindowController* s_dn_ctrl = nil;
+            s_dn_ctrl = ctrl;
+            (void)s_dn_ctrl;
+            [NSApp run];
+            return 0;
+        }
+
+        NSView* root = [win contentView];
+        [root setWantsLayer:YES];
+        root.layer.backgroundColor = nscolor_from_hex(spec.bg_color, 1.0).CGColor;
 
         // Header bar
         CGFloat headerH = 44.0;
@@ -1393,6 +1756,177 @@ int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool sh
         badgeLbl.autoresizingMask = NSViewMinXMargin;
         [header addSubview:badgeLbl];
 
+        // ── MODE B: Pure App UI Mode (Honors Exact Card/Button Coordinates, No Game Stage!) ──
+        if (!has_game_stage) {
+            CGFloat statusH = 30.0;
+            CGFloat contentH = winH - headerH - statusH;
+            NSScrollView* appScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, statusH, winW, contentH)];
+            appScroll.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+            appScroll.hasVerticalScroller = YES;
+            appScroll.drawsBackground = NO;
+            [root addSubview:appScroll];
+
+            bool has_coords = false;
+            double maxCoordX = winW, maxCoordY = contentH;
+            for (const auto& c : spec.cards) {
+                if (c.x > 0 || c.y > 0) has_coords = true;
+                maxCoordX = std::max(maxCoordX, c.x + std::max(120.0, c.width) + 20.0);
+                maxCoordY = std::max(maxCoordY, c.y + std::max(60.0, c.height) + 20.0);
+            }
+            for (const auto& b : spec.buttons) {
+                if (b.x > 0 || b.y > 0) has_coords = true;
+                maxCoordX = std::max(maxCoordX, b.x + std::max(100.0, b.width) + 20.0);
+                maxCoordY = std::max(maxCoordY, b.y + std::max(32.0, b.height) + 20.0);
+            }
+
+            CGFloat scaleX = (has_coords && maxCoordX > winW) ? (winW / maxCoordX) : 1.0;
+            LoopingMacFlippedView* canvasDoc = [[LoopingMacFlippedView alloc]
+                initWithFrame:NSMakeRect(0, 0, winW, std::max(contentH, static_cast<CGFloat>(maxCoordY)))];
+
+            CGFloat flowY = 18.0;
+            for (const auto& lblTxt : spec.labels) {
+                NSString* sTxt = [NSString stringWithUTF8String:unescape_display_text(lblTxt).c_str()] ?: @"";
+                NSTextField* lbl = [NSTextField wrappingLabelWithString:sTxt];
+                lbl.frame = NSMakeRect(20, flowY, winW - 40, 22);
+                lbl.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
+                lbl.textColor = nscolor_from_hex(spec.accent_color, 1.0);
+                [canvasDoc addSubview:lbl];
+                flowY += 26.0;
+            }
+
+            // Render every card cleanly at its real (x, y, w, h) in a FLIPPED box (Title on TOP!)
+            for (size_t i = 0; i < spec.cards.size(); ++i) {
+                const auto& card = spec.cards[i];
+                CGFloat cx = has_coords ? card.x * scaleX : 20.0;
+                CGFloat cy = has_coords ? card.y : flowY;
+                CGFloat cw = has_coords ? std::max(140.0, card.width * scaleX) : (winW - 40.0);
+                CGFloat ch = has_coords ? std::max(64.0, card.height) : 96.0;
+
+                LoopingMacFlippedView* box = [[LoopingMacFlippedView alloc] initWithFrame:NSMakeRect(cx, cy, cw, ch)];
+                [box setWantsLayer:YES];
+                box.layer.backgroundColor = nscolor_from_hex(spec.card_bg, 0.94).CGColor;
+                box.layer.cornerRadius = 12.0;
+                box.layer.borderWidth = 1.0;
+                box.layer.borderColor = nscolor_from_hex(spec.card_border, 1.0).CGColor;
+
+                NSString* cTitle = [NSString stringWithUTF8String:unescape_display_text(card.title).c_str()] ?: @"Card";
+                NSTextField* cLbl = [NSTextField labelWithString:cTitle];
+                cLbl.frame = NSMakeRect(14, 10, cw - 28, 20);
+                cLbl.font = [NSFont systemFontOfSize:13 weight:NSFontWeightBold];
+                cLbl.textColor = nscolor_from_hex(spec.primary_color, 1.0);
+                [box addSubview:cLbl];
+
+                NSString* cText = [NSString stringWithUTF8String:unescape_display_text(card.text).c_str()] ?: @"";
+                NSTextField* cBody = [NSTextField wrappingLabelWithString:cText];
+                cBody.frame = NSMakeRect(14, 34, cw - 28, std::max(22.0, ch - 44.0));
+                cBody.font = [NSFont systemFontOfSize:11.5];
+                cBody.textColor = [NSColor colorWithWhite:0.88 alpha:1.0];
+                [box addSubview:cBody];
+                [ctrl.cardBodyLabels addObject:cBody];
+                [canvasDoc addSubview:box];
+                if (!has_coords) flowY += ch + 12.0;
+            }
+
+            // Render inputs, sliders, toggles, progress bars
+            for (const auto& inp : spec.inputs) {
+                CGFloat ix = (inp.x > 0) ? inp.x * scaleX : 20.0;
+                CGFloat iy = (inp.y > 0) ? inp.y : flowY;
+                CGFloat iw = std::max(140.0, inp.width * scaleX);
+                NSTextField* tf = [[NSTextField alloc] initWithFrame:NSMakeRect(ix, iy, iw, 28)];
+                tf.placeholderString = [NSString stringWithUTF8String:inp.placeholder.c_str()] ?: @"";
+                tf.stringValue = [NSString stringWithUTF8String:inp.value.c_str()] ?: @"";
+                [canvasDoc addSubview:tf];
+                if (inp.y <= 0) flowY += 36.0;
+            }
+
+            if (!spec.sliders.empty() || !spec.toggles.empty() || !spec.progress_bars.empty()) {
+                CGFloat ctrlY = std::max(flowY, static_cast<CGFloat>(maxCoordY));
+                for (size_t i = 0; i < spec.sliders.size(); ++i) {
+                    const auto& sl = spec.sliders[i];
+                    NSTextField* lbl = [NSTextField labelWithString:[NSString stringWithUTF8String:sl.label.c_str()] ?: @"Slider"];
+                    lbl.frame = NSMakeRect(20, ctrlY, winW - 40, 18);
+                    lbl.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
+                    lbl.textColor = [NSColor colorWithWhite:0.86 alpha:1.0];
+                    [canvasDoc addSubview:lbl];
+                    NSSlider* sld = [NSSlider sliderWithValue:sl.current_val minValue:sl.min_val maxValue:sl.max_val
+                                                       target:ctrl action:@selector(onSliderChanged:)];
+                    sld.frame = NSMakeRect(20, ctrlY + 20, std::min<CGFloat>(360.0, winW - 40), 22);
+                    sld.tag = static_cast<NSInteger>(i);
+                    [ctrl.sliderViews addObject:sld];
+                    [canvasDoc addSubview:sld];
+                    ctrlY += 48.0;
+                }
+                for (size_t i = 0; i < spec.toggles.size(); ++i) {
+                    const auto& tg = spec.toggles[i];
+                    NSButton* chk = [NSButton checkboxWithTitle:[NSString stringWithUTF8String:tg.label.c_str()] ?: @"Toggle"
+                                                         target:ctrl action:@selector(onToggleChanged:)];
+                    chk.frame = NSMakeRect(20, ctrlY, winW - 40, 24);
+                    chk.state = tg.is_checked ? NSControlStateValueOn : NSControlStateValueOff;
+                    chk.tag = static_cast<NSInteger>(i);
+                    [ctrl.toggleViews addObject:chk];
+                    [canvasDoc addSubview:chk];
+                    ctrlY += 30.0;
+                }
+                for (const auto& pr : spec.progress_bars) {
+                    NSTextField* lbl = [NSTextField labelWithString:[NSString stringWithUTF8String:pr.label.c_str()] ?: @"Progress"];
+                    lbl.frame = NSMakeRect(20, ctrlY, winW - 40, 18);
+                    lbl.font = [NSFont systemFontOfSize:11.5];
+                    lbl.textColor = [NSColor colorWithWhite:0.84 alpha:1.0];
+                    [canvasDoc addSubview:lbl];
+                    NSProgressIndicator* bar = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(20, ctrlY + 20, std::min<CGFloat>(360.0, winW - 40), 12)];
+                    bar.indeterminate = NO; bar.minValue = 0.0; bar.maxValue = 1.0;
+                    double maxV = pr.max_val > 0.0 ? pr.max_val : 100.0;
+                    bar.doubleValue = std::max(0.0, std::min(1.0, (pr.progress > 1.0 || maxV > 1.0) ? (pr.progress / maxV) : pr.progress));
+                    [canvasDoc addSubview:bar];
+                    ctrlY += 38.0;
+                }
+                maxCoordY = std::max(maxCoordY, static_cast<double>(ctrlY + 12.0));
+            }
+
+            for (size_t i = 0; i < spec.buttons.size(); ++i) {
+                const auto& btn = spec.buttons[i];
+                CGFloat bx = has_coords ? btn.x * scaleX : 20.0;
+                CGFloat by = has_coords ? btn.y : flowY;
+                CGFloat bw = std::max(110.0, btn.width * scaleX);
+                CGFloat bh = std::max(28.0, std::min(40.0, btn.height));
+                NSString* bTitle = [NSString stringWithUTF8String:btn.text.c_str()] ?: @"Action";
+                NSButton* nsBtn = [NSButton buttonWithTitle:bTitle target:ctrl action:@selector(onDynamicButtonClicked:)];
+                nsBtn.frame = NSMakeRect(bx, by, bw, bh);
+                nsBtn.bezelStyle = NSBezelStyleRounded;
+                nsBtn.tag = static_cast<NSInteger>(i);
+                [ctrl.buttonActions addObject:[NSString stringWithUTF8String:btn.action.c_str()] ?: @""];
+                [ctrl.buttonSnippets addObject:[NSString stringWithUTF8String:btn.snippet.c_str()] ?: @""];
+                [canvasDoc addSubview:nsBtn];
+                if (!has_coords) flowY += bh + 10.0;
+            }
+
+            canvasDoc.frame = NSMakeRect(0, 0, winW, std::max(contentH, std::max(flowY + 20.0, static_cast<CGFloat>(maxCoordY))));
+            [appScroll setDocumentView:canvasDoc];
+
+            // Sleek single-line bottom status strip (instead of bulky terminal drawer)
+            NSScrollView* logScroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, winW, statusH)];
+            logScroll.autoresizingMask = NSViewWidthSizable | NSViewMaxYMargin;
+            NSTextView* logTV = [[NSTextView alloc] initWithFrame:logScroll.bounds];
+            logTV.editable = NO;
+            logTV.backgroundColor = nscolor_from_hex(spec.log_bg, 0.96);
+            logTV.textColor = nscolor_from_hex(spec.accent_color, 0.92);
+            logTV.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+            logScroll.documentView = logTV;
+            [root addSubview:logScroll];
+            ctrl.logTextView = logTV;
+            [ctrl appendLog:[NSString stringWithFormat:@"%s • Native App Layout", spec.title.c_str()]];
+
+            for (const auto& tn : spec.tones) play_pcm_tone_macos(tn.freq_hz, tn.duration_ms);
+            [win makeKeyAndOrderFront:nil];
+            [NSApp activateIgnoringOtherApps:YES];
+            static LoopingMacWindowController* s_app_ctrl = nil;
+            s_app_ctrl = ctrl;
+            (void)s_app_ctrl;
+            [NSApp run];
+            return 0;
+        }
+
+        // ── MODE C: Game Stage Mode (2D / 3D Entities & Presets) ──
         // Left Stage Canvas (for 2D/3D entities or telemetry)
         CGFloat sidebarW = 320.0;
         CGFloat logH = 92.0;
@@ -1453,22 +1987,22 @@ int run_mac_native_window(const DirectXWindowSpec& spec, int max_frames, bool sh
         }
 
         for (const auto& card : spec.cards) {
-            CGFloat ch = 64.0;
-            NSView* box = [[NSView alloc] initWithFrame:NSMakeRect(0, curY, innerW, ch)];
+            CGFloat ch = 72.0;
+            LoopingMacFlippedView* box = [[LoopingMacFlippedView alloc] initWithFrame:NSMakeRect(0, curY, innerW, ch)];
             [box setWantsLayer:YES];
             box.layer.backgroundColor = nscolor_from_hex(spec.card_bg, 0.92).CGColor;
             box.layer.cornerRadius = 8.0;
             box.layer.borderWidth = 1.0;
             box.layer.borderColor = nscolor_from_hex(spec.card_border, 1.0).CGColor;
 
-            NSString* cTitle = [NSString stringWithUTF8String:card.title.c_str()] ?: @"Card";
+            NSString* cTitle = [NSString stringWithUTF8String:unescape_display_text(card.title).c_str()] ?: @"Card";
             NSTextField* cLbl = [NSTextField labelWithString:cTitle];
             cLbl.frame = NSMakeRect(10, 6, innerW - 20, 18);
             cLbl.font = [NSFont systemFontOfSize:12 weight:NSFontWeightBold];
             cLbl.textColor = nscolor_from_hex(spec.primary_color, 1.0);
             [box addSubview:cLbl];
 
-            NSString* cText = [NSString stringWithUTF8String:card.text.c_str()] ?: @"";
+            NSString* cText = [NSString stringWithUTF8String:unescape_display_text(card.text).c_str()] ?: @"";
             NSTextField* cBody = [NSTextField wrappingLabelWithString:cText];
             cBody.frame = NSMakeRect(10, 26, innerW - 20, ch - 32);
             cBody.font = [NSFont systemFontOfSize:11];

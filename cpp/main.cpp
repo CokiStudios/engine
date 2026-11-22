@@ -1391,6 +1391,40 @@ int run_tests() {
                     vm_py_full.variables["py_slice"].as_string() == "loop");
     }
 
+    // Test 81: DrawNative Custom UI Library, Primitives & .dxwin Round-Trip
+    {
+        Interpreter vm_dn;
+        vm_dn.execute_code(
+            "import DrawNative as dn\n"
+            "dn.window(\"CustomStudio\", 920, 580, \"#0d0a08\")\n"
+            "dn.gradient(0, 0, 920, 580, \"#19110b\", \"#090706\", true)\n"
+            "dn.glass(24, 72, 400, 160, \"#ffffff\", 0.08, 16, \"#f59e0b44\")\n"
+            "dn.text(44, 96, \"Custom UI\", 24, \"#ffffff\", \"bold\")\n"
+            "dn.button(44, 176, 140, 36, \"Play\", \"#f59e0b\", \"#0d0a08\", 10, \"play_btn\")\n"
+            "dn.chart_bars(448, 72, 440, 160, \"20,60,90,45\", \"#f59e0b\", \"#17110c\", 12)\n"
+            "dn.present()\n"
+            "val dn_count = dn.count()\n"
+            "val dn_info = dn.info()\n"
+        );
+        std::string dn_path = "/tmp/looping_drawnative_test.dxwin";
+        bool saved_dn = vm_dn.current_window.save_dxwin(dn_path);
+        DirectXWindowSpec loaded_dn;
+        bool read_dn = saved_dn && load_dxwin_file(dn_path, loaded_dn);
+        int dn_smoke_rc = 0;
+#if defined(__APPLE__) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE)
+        dn_smoke_rc = read_dn ? mac_native::run_mac_native_window(loaded_dn, 3, false) : 1;
+#endif
+        std::remove(dn_path.c_str());
+        assert_test("DrawNative Custom UI Primitives, .dxwin Serialization & Native Render",
+                    vm_dn.current_window.custom_ui_mode &&
+                    vm_dn.variables["dn_count"].as_int() == 5 &&
+                    read_dn && loaded_dn.custom_ui_mode &&
+                    loaded_dn.draw_ops.size() == 5 &&
+                    loaded_dn.draw_ops[3].op == "button" &&
+                    loaded_dn.draw_ops[3].action == "play_btn" &&
+                    dn_smoke_rc == 0);
+    }
+
     std::cout << "\n" << color::BOLD << (passed == total ? color::GREEN : color::YELLOW)
               << "Results: " << passed << "/" << total << " tests passed." << color::RESET << "\n\n";
 

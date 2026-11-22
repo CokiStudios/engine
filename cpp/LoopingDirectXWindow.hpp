@@ -125,6 +125,26 @@ struct DxToneSpec {
     double duration_ms = 80;
 };
 
+// DrawNative flexible custom UI primitive specification
+struct DxDrawOp {
+    std::string op;            // gradient|rect|glass|circle|line|glow|text|button|card|navbar|sidebar|badge|progress|chip|avatar|chart_bars|divider
+    double x = 0;
+    double y = 0;
+    double w = 0;
+    double h = 0;
+    double radius = 0;
+    double alpha = 1.0;
+    double value = 0.0;        // font_size, thickness, progress ratio, etc.
+    bool flag = false;         // vertical gradient, chip active, etc.
+    std::string color1;        // fill / top / primary color
+    std::string color2;        // text / bottom / accent color
+    std::string border_color;  // stroke / border color
+    std::string text;          // primary label / content
+    std::string subtext;       // body / subtitle / csv chart values
+    std::string extra;         // font weight ("regular","semibold","bold","mono") / style
+    std::string action;        // interactive button / chip action id
+};
+
 struct DxEntity3DSpec {
     std::string type;
     std::string name;
@@ -235,6 +255,8 @@ struct DirectXWindowSpec {
     std::vector<DxStagePresetSpec> stage_presets;
     DxAlgebraTableSpec algebra_table;
     std::vector<std::pair<std::string, std::string>> init_vars;
+    bool custom_ui_mode = false;
+    std::vector<DxDrawOp> draw_ops;
 };
 
 inline std::string dxwin_escape(const std::string& in) {
@@ -327,6 +349,17 @@ inline bool save_dxwin_file(const std::string& path, const DirectXWindowSpec& sp
     meta("scenario_weather", spec.scenario_weather);
     meta("scenario_accent", spec.scenario_accent);
     meta("header_text", spec.header_text);
+    meta("custom_ui_mode", spec.custom_ui_mode ? "1" : "0");
+
+    for (const auto& op : spec.draw_ops) {
+        out << "DN|" << dxwin_escape(op.op) << "|" << op.x << "|" << op.y << "|"
+            << op.w << "|" << op.h << "|" << op.radius << "|" << op.alpha << "|"
+            << op.value << "|" << (op.flag ? "1" : "0") << "|"
+            << dxwin_escape(op.color1) << "|" << dxwin_escape(op.color2) << "|"
+            << dxwin_escape(op.border_color) << "|" << dxwin_escape(op.text) << "|"
+            << dxwin_escape(op.subtext) << "|" << dxwin_escape(op.extra) << "|"
+            << dxwin_escape(op.action) << "\n";
+    }
 
     for (const auto& c : spec.cards) {
         out << "CARD|" << dxwin_escape(c.title) << "|" << dxwin_escape(c.text) << "|"
@@ -461,6 +494,16 @@ inline bool load_dxwin_file(const std::string& path, DirectXWindowSpec& spec) {
             else if (k == "scenario_weather") spec.scenario_weather = v;
             else if (k == "scenario_accent") spec.scenario_accent = v;
             else if (k == "header_text") spec.header_text = v;
+            else if (k == "custom_ui_mode") spec.custom_ui_mode = (v == "1");
+        } else if (f[0] == "DN" && f.size() >= 17) {
+            DxDrawOp op;
+            op.op = f[1];
+            op.x = to_d(f[2]); op.y = to_d(f[3]); op.w = to_d(f[4]); op.h = to_d(f[5]);
+            op.radius = to_d(f[6]); op.alpha = to_d(f[7], 1.0); op.value = to_d(f[8]);
+            op.flag = (f[9] == "1");
+            op.color1 = f[10]; op.color2 = f[11]; op.border_color = f[12];
+            op.text = f[13]; op.subtext = f[14]; op.extra = f[15]; op.action = f[16];
+            spec.draw_ops.push_back(std::move(op));
         } else if (f[0] == "CARD" && f.size() >= 9) {
             DxCardSpec c;
             c.title = f[1]; c.text = f[2]; c.badge = f[3]; c.icon = f[4];

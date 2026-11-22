@@ -1154,6 +1154,8 @@ public:
                     obj_var != "loopize" && obj_var != "lz" && obj_var != "ecs" &&
                     obj_var != "scene3d" && obj_var != "math3d" && obj_var != "physics3d" &&
                     obj_var != "camera3d" && obj_var != "light3d" &&
+                    obj_var != "DrawNative" && obj_var != "drawnative" &&
+                    obj_var != "draw_native" && obj_var != "dn" &&
                     obj_var != "str" && obj_var != "base64" && obj_var != "env" && obj_var != "button") {
                     if (method_name == "push" || method_name == "append") {
                         if (!evaluated_args.empty()) vit->second.push(evaluated_args[0]);
@@ -1943,6 +1945,267 @@ public:
                     }
                 }
                 return Value("");
+            }
+
+            // ── DrawNative Custom UI Library (DrawNative.* / drawnative.* / dn.*) ──
+            {
+                std::string dn_fn;
+                if (name.rfind("DrawNative.", 0) == 0) dn_fn = name.substr(11);
+                else if (name.rfind("drawnative.", 0) == 0) dn_fn = name.substr(11);
+                else if (name.rfind("draw_native.", 0) == 0) dn_fn = name.substr(12);
+                else if (name.rfind("dn.", 0) == 0) dn_fn = name.substr(3);
+
+                if (!dn_fn.empty()) {
+                    auto arg_s = [&](size_t idx, const std::string& def = "") -> std::string {
+                        return idx < evaluated_args.size() ? evaluated_args[idx].as_string() : def;
+                    };
+                    auto arg_d = [&](size_t idx, double def = 0.0) -> double {
+                        return idx < evaluated_args.size() ? evaluated_args[idx].as_number() : def;
+                    };
+                    auto arg_b = [&](size_t idx, bool def = false) -> bool {
+                        return idx < evaluated_args.size() ? evaluated_args[idx].is_truthy() : def;
+                    };
+
+                    if (dn_fn == "window" || dn_fn == "canvas") {
+                        std::string title = (dn_fn == "window") ? arg_s(0, "DrawNative Window") : current_window.title;
+                        double w = (dn_fn == "window") ? arg_d(1, 960) : arg_d(0, 960);
+                        double h = (dn_fn == "window") ? arg_d(2, 620) : arg_d(1, 620);
+                        std::string bg = (dn_fn == "window") ? arg_s(3, "#090d16") : arg_s(2, "#090d16");
+                        current_window.title = title;
+                        current_window.app_name = DynamicWindow::sanitize_id(title);
+                        current_window.width = w;
+                        current_window.height = h;
+                        current_window.background = bg;
+                        current_window.custom_ui_mode = true;
+                        has_active_window = true;
+                        return Value(true);
+                    }
+                    if (dn_fn == "clear") {
+                        current_window.draw_ops.clear();
+                        current_window.background = arg_s(0, "#090d16");
+                        current_window.custom_ui_mode = true;
+                        has_active_window = true;
+                        return Value(true);
+                    }
+                    if (dn_fn == "reset") {
+                        current_window.draw_ops.clear();
+                        current_window.custom_ui_mode = true;
+                        return Value(true);
+                    }
+                    if (dn_fn == "gradient") {
+                        DxDrawOp op;
+                        op.op = "gradient";
+                        op.x = arg_d(0, 0); op.y = arg_d(1, 0);
+                        op.w = arg_d(2, current_window.width); op.h = arg_d(3, current_window.height);
+                        op.color1 = arg_s(4, "#0f172a"); op.color2 = arg_s(5, "#020617");
+                        op.flag = arg_b(6, true); // vertical by default
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "rect" || dn_fn == "box" || dn_fn == "panel") {
+                        DxDrawOp op;
+                        op.op = "rect";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 160); op.h = arg_d(3, 80);
+                        op.color1 = arg_s(4, "#151d30");
+                        op.radius = arg_d(5, 12);
+                        op.border_color = arg_s(6, "");
+                        op.value = arg_d(7, 1.0);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "glass") {
+                        DxDrawOp op;
+                        op.op = "glass";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 240); op.h = arg_d(3, 140);
+                        op.color1 = arg_s(4, "#ffffff");
+                        op.alpha = arg_d(5, 0.10);
+                        op.radius = arg_d(6, 16);
+                        op.border_color = arg_s(7, "#ffffff33");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "circle" || dn_fn == "dot") {
+                        DxDrawOp op;
+                        op.op = "circle";
+                        op.x = arg_d(0); op.y = arg_d(1); op.radius = arg_d(2, 24);
+                        op.color1 = arg_s(3, "#00f5d4");
+                        op.border_color = arg_s(4, "");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "line") {
+                        DxDrawOp op;
+                        op.op = "line";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2); op.h = arg_d(3);
+                        op.color1 = arg_s(4, "#38bdf8");
+                        op.value = arg_d(5, 2.0);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "glow") {
+                        DxDrawOp op;
+                        op.op = "glow";
+                        op.x = arg_d(0); op.y = arg_d(1); op.radius = arg_d(2, 160);
+                        op.color1 = arg_s(3, "#00f5d4");
+                        op.alpha = arg_d(4, 0.22);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "text" || dn_fn == "label") {
+                        DxDrawOp op;
+                        op.op = "text";
+                        op.x = arg_d(0); op.y = arg_d(1);
+                        op.text = arg_s(2, "");
+                        op.value = arg_d(3, 15.0);
+                        op.color1 = arg_s(4, "#f8fafc");
+                        op.extra = arg_s(5, "regular");
+                        op.w = arg_d(6, 0);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "button") {
+                        DxDrawOp op;
+                        op.op = "button";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 140); op.h = arg_d(3, 38);
+                        op.text = arg_s(4, "Button");
+                        op.color1 = arg_s(5, "#00f5d4");
+                        op.color2 = arg_s(6, "#04111a");
+                        op.radius = arg_d(7, 10);
+                        op.action = arg_s(8, op.text);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "card") {
+                        DxDrawOp op;
+                        op.op = "card";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 260); op.h = arg_d(3, 140);
+                        op.text = arg_s(4, "Card");
+                        op.subtext = arg_s(5, "");
+                        op.color1 = arg_s(6, "#121b2f");
+                        op.color2 = arg_s(7, "#00f5d4");
+                        op.radius = arg_d(8, 14);
+                        op.border_color = arg_s(9, "#243454");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "navbar") {
+                        DxDrawOp op;
+                        op.op = "navbar";
+                        op.h = arg_d(0, 56);
+                        op.text = arg_s(1, current_window.title);
+                        op.subtext = arg_s(2, "");
+                        op.color1 = arg_s(3, "#0d1322");
+                        op.color2 = arg_s(4, "#00f5d4");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "sidebar") {
+                        DxDrawOp op;
+                        op.op = "sidebar";
+                        op.w = arg_d(0, 220);
+                        op.color1 = arg_s(1, "#0d1322");
+                        op.border_color = arg_s(2, "#1e2c48");
+                        op.y = arg_d(3, 0);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "badge" || dn_fn == "pill") {
+                        DxDrawOp op;
+                        op.op = "badge";
+                        op.x = arg_d(0); op.y = arg_d(1);
+                        op.text = arg_s(2, "NEW");
+                        op.color1 = arg_s(3, "#143536");
+                        op.color2 = arg_s(4, "#00f5d4");
+                        op.radius = arg_d(5, 11);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "progress") {
+                        DxDrawOp op;
+                        op.op = "progress";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 200); op.h = arg_d(3, 10);
+                        op.value = arg_d(4, 0.5);
+                        op.color1 = arg_s(5, "#00f5d4");
+                        op.color2 = arg_s(6, "#1e293b");
+                        op.radius = arg_d(7, 5);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "chip") {
+                        DxDrawOp op;
+                        op.op = "chip";
+                        op.x = arg_d(0); op.y = arg_d(1);
+                        op.text = arg_s(2, "Chip");
+                        op.flag = arg_b(3, false);
+                        op.color1 = arg_s(4, "#00f5d4");
+                        op.action = arg_s(5, op.text);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "avatar") {
+                        DxDrawOp op;
+                        op.op = "avatar";
+                        op.x = arg_d(0); op.y = arg_d(1); op.radius = arg_d(2, 22);
+                        op.text = arg_s(3, "CS");
+                        op.color1 = arg_s(4, "#8b5cf6");
+                        op.color2 = arg_s(5, "#ffffff");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "chart_bars" || dn_fn == "bars") {
+                        DxDrawOp op;
+                        op.op = "chart_bars";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 280); op.h = arg_d(3, 110);
+                        op.subtext = arg_s(4, "35,62,48,88,74,95,60");
+                        op.color1 = arg_s(5, "#00f5d4");
+                        op.color2 = arg_s(6, "#0f172a");
+                        op.radius = arg_d(7, 10);
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "divider") {
+                        DxDrawOp op;
+                        op.op = "divider";
+                        op.x = arg_d(0); op.y = arg_d(1); op.w = arg_d(2, 200);
+                        op.color1 = arg_s(3, "#1e293b");
+                        current_window.add_draw_op(op);
+                        has_active_window = true;
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "present" || dn_fn == "show") {
+                        current_window.custom_ui_mode = true;
+                        has_active_window = true;
+                        return Value(true);
+                    }
+                    if (dn_fn == "count") {
+                        return Value(static_cast<double>(current_window.draw_ops.size()));
+                    }
+                    if (dn_fn == "info" || dn_fn == "version") {
+                        std::unordered_map<std::string, Value> info;
+                        info["library"] = Value("DrawNative");
+                        info["version"] = Value("1.0.0");
+                        info["ops"] = Value(static_cast<double>(current_window.draw_ops.size()));
+                        info["custom_ui_mode"] = Value(current_window.custom_ui_mode);
+                        info["backends"] = Value("macOS Cocoa/CoreGraphics+ASM, Linux Framebuffer/Gamescope, Windows DX11");
+                        return Value(info);
+                    }
+                }
             }
 
             // Interactive Console Input
@@ -5049,7 +5312,8 @@ public:
                 "sound", "audio", "cpp_snippets", "metal4", "metal", "loop.metal4",
                 "zbash-utils", "zbash_utils", "loop.zbash-utils", "zbash",
                 "csharp", "cs", "loop.csharp", "obj3d", "mesh3d",
-                "loopize++", "loopize", "loopize_pp", "loop.loopize"
+                "loopize++", "loopize", "loopize_pp", "loop.loopize",
+                "DrawNative", "drawnative", "draw_native", "dn", "loop.drawnative", "loop.DrawNative"
             };
             std::string local_manifest_check = "./modules/" + mod + "/smile.json";
             std::ifstream mf_check(local_manifest_check);
